@@ -1,0 +1,61 @@
+// Configuración de la base de datos para Portafolio Personal
+// Motor: PostgreSQL (Supabase)
+
+Table users {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  email varchar [unique, not null]
+  password varchar [not null] // Bcrypt 12 rounds
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table projects {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  title varchar [not null]
+  slug varchar [unique, not null]
+  description text [not null]
+  content text // Para descripciones extendidas (Markdown/HTML)
+  cover_image varchar // URL de recurso visual
+  tags varchar[] // Array de strings (ej: ['React', 'NestJS'])
+  is_published boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table project_urls {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  project_id uuid [ref: > projects.id, not null]
+  title varchar [not null]
+  url varchar [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table reviews {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  author_name varchar [default: 'Anónimo']
+  author_role varchar // Ej: 'CTO en Startup X'
+  content text [not null]
+  rating integer [not null, note: 'Escala 1-5']
+  is_approved boolean [default: false] // Las reseñas requieren aprobación del admin
+  created_at timestamp [default: `now()`]
+}
+
+Table review_comments {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  review_id uuid [ref: > reviews.id, not null]
+  author_name varchar [default: 'Anónimo']
+  content text [not null]
+  created_at timestamp [default: `now()`]
+}
+
+Table contacts {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  name varchar [not null]
+  email varchar [not null]
+  subject varchar
+  message text [not null]
+  status varchar [default: 'pending', note: 'pending, read, replied']
+  email_sent_log boolean [default: true, note: 'Verifica si Resend procesó el correo']
+  created_at timestamp [default: `now()`]
+}
