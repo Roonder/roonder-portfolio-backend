@@ -2,7 +2,7 @@
 
 RESTful API for a personal portfolio, built with NestJS 11, TypeORM, and PostgreSQL. Single-admin in-house JWT auth, public read endpoints, and a contact flow that dispatches email through Resend.
 
-> **Status:** scaffolding. The four domain modules are stubbed, but the HTTP bootstrap (`main.ts`) is intentionally minimal — no global `ValidationPipe`, CORS, Swagger, or `setGlobalPrefix` are wired yet. Treat this as the foundation, not a finished product.
+> **Status:** scaffolding. The HTTP bootstrap is wired (global `/api/v1` prefix, Joi-validated `ConfigModule`, global `ValidationPipe` with `whitelist` + `forbidNonWhitelisted`, CORS from `FRONTEND_URL`, and Swagger at `/api/v1/docs`), but the four domain modules are still stubbed. Treat this as the foundation, not a finished product.
 
 ## Stack
 
@@ -12,8 +12,8 @@ RESTful API for a personal portfolio, built with NestJS 11, TypeORM, and Postgre
 - **Auth:** `@nestjs/jwt` + `passport-jwt` (in-house, single admin)
 - **Validation:** `class-validator` + `class-transformer` (DTOs), `Joi` for env vars
 - **Email:** `resend` SDK via NestJS `EventEmitter2`
-- **API docs:** `@nestjs/swagger` (module present, not yet mounted in `main.ts`)
-- **CORS:** `cors` package (module present, not yet wired)
+- **API docs:** `@nestjs/swagger` mounted at `/api/v1/docs` (JSON spec at `/api/v1/docs-json`)
+- **CORS:** `cors` package, configured from `FRONTEND_URL` with `credentials: true`
 - **Testing:** Jest 30 + ts-jest, supertest + `@nestjs/testing` for E2E
 
 ## Getting Started
@@ -118,47 +118,72 @@ Unit tests are colocated next to the source they cover.
 
 ## API Surface
 
-See `openspec/specs/server_specs.md` for the full design. Summary:
+All HTTP routes are mounted under the global **`/api/v1`** prefix (see `src/main.ts` → `app.setGlobalPrefix('api/v1')`). The unprefixed paths below 404. See `openspec/specs/server_specs.md` for the full design. Summary:
+
+### Swagger
+
+- **UI:** [`/api/v1/docs`](http://localhost:3000/api/v1/docs) — interactive documentation.
+- **JSON spec:** `/api/v1/docs-json` — raw OpenAPI 3.0 document (use this for codegen / clients).
+- **Auth scheme:** Bearer JWT, registered via `addBearerAuth()`.
 
 ### Auth
 
-| Method | Path            | Auth   | Purpose                            |
-| ------ | --------------- | ------ | ---------------------------------- |
-| POST   | `/auth/login`   | Public | Authenticate admin, return JWT     |
-| GET    | `/auth/profile` | JWT    | Return authenticated admin profile |
+| Method | Path                   | Auth   | Purpose                            |
+| ------ | ---------------------- | ------ | ---------------------------------- |
+| POST   | `/api/v1/auth/login`   | Public | Authenticate admin, return JWT     |
+| GET    | `/api/v1/auth/profile` | JWT    | Return authenticated admin profile |
 
 ### Projects
 
-| Method | Path              | Auth   | Purpose                                          |
-| ------ | ----------------- | ------ | ------------------------------------------------ |
-| GET    | `/projects`       | Public | List projects (paginated, `is_published` filter) |
-| GET    | `/projects/:slug` | Public | Project detail by slug                           |
-| POST   | `/projects`       | JWT    | Create project                                   |
-| PATCH  | `/projects/:id`   | JWT    | Update project                                   |
-| DELETE | `/projects/:id`   | JWT    | Delete project                                   |
+| Method | Path                      | Auth   | Purpose                                          |
+| ------ | ------------------------- | ------ | ------------------------------------------------ |
+| GET    | `/api/v1/projects`        | Public | List projects (paginated, `is_published` filter) |
+| GET    | `/api/v1/projects/:slug`  | Public | Project detail by slug                           |
+| POST   | `/api/v1/projects`        | JWT    | Create project                                   |
+| PATCH  | `/api/v1/projects/:id`    | JWT    | Update project                                   |
+| DELETE | `/api/v1/projects/:id`    | JWT    | Delete project                                   |
 
 `cover_image` stores a URL; uploads are intended to use pre-signed URLs against a Supabase Storage bucket.
 
 ### Reviews
 
-| Method | Path                         | Auth   | Purpose                                      |
-| ------ | ---------------------------- | ------ | -------------------------------------------- |
-| POST   | `/reviews`                   | Public | Submit review (`is_approved: false` default) |
-| GET    | `/reviews`                   | Public | List approved reviews                        |
-| GET    | `/admin/reviews`             | JWT    | List all reviews (admin)                     |
-| PATCH  | `/admin/reviews/:id/approve` | JWT    | Toggle approval                              |
-| POST   | `/reviews/:id/comments`      | Public | Add comment to a review                      |
-| DELETE | `/admin/reviews/:id`         | JWT    | Delete review (admin)                        |
+| Method | Path                                 | Auth   | Purpose                                      |
+| ------ | ------------------------------------ | ------ | -------------------------------------------- |
+| POST   | `/api/v1/reviews`                    | Public | Submit review (`is_approved: false` default) |
+| GET    | `/api/v1/reviews`                    | Public | List approved reviews                        |
+| GET    | `/api/v1/admin/reviews`              | JWT    | List all reviews (admin)                     |
+| PATCH  | `/api/v1/admin/reviews/:id/approve`  | JWT    | Toggle approval                              |
+| POST   | `/api/v1/reviews/:id/comments`       | Public | Add comment to a review                      |
+| DELETE | `/api/v1/admin/reviews/:id`          | JWT    | Delete review (admin)                        |
 
 ### Contact
 
-| Method | Path                  | Auth   | Purpose                                                                      |
-| ------ | --------------------- | ------ | ---------------------------------------------------------------------------- |
-| POST   | `/contacts`           | Public | Submit contact form (validates, persists, dispatches email async via Resend) |
-| GET    | `/admin/contacts`     | JWT    | List contact log (admin)                                                     |
-| PATCH  | `/admin/contacts/:id` | JWT    | Mark contact as read/replied (admin)                                         |
+| Method | Path                       | Auth   | Purpose                                                                      |
+| ------ | -------------------------- | ------ | ---------------------------------------------------------------------------- |
+| POST   | `/api/v1/contacts`         | Public | Submit contact form (validates, persists, dispatches email async via Resend) |
+| GET    | `/api/v1/admin/contacts`   | JWT    | List contact log (admin)                                                     |
+| PATCH  | `/api/v1/admin/contacts/:id` | JWT    | Mark contact as read/replied (admin)                                         |
 
 The contact flow uses `EventEmitter2` to dispatch the email asynchronously and records the outcome in `email_sent_log`.
+
+### DTO conventions
+
+The global `ValidationPipe` is configured with `whitelist: true`, `transform: true`, `forbidNonWhitelisted: true`, and `transformOptions: { enableImplicitConversion: true }` (see `src/main.ts`). With `enableImplicitConversion`, the pipe uses `class-transformer`'s `plainToInstance` to coerce incoming values to the DTO's declared types. To keep coercion **sound**, follow this convention:
+
+- **`@Query()` and `@Param()` DTOs** — wire formats are strings, so implicit conversion is the intended behaviour. **You MUST** annotate numeric and date fields with `@Type(() => Number)` / `@Type(() => Date)` to get safe coercion:
+  ```ts
+  import { Type } from "class-transformer";
+  import { IsInt, IsOptional, Min } from "class-validator";
+
+  export class ListProjectsQueryDto {
+  	@IsOptional()
+  	@Type(() => Number)
+  	@IsInt()
+  	@Min(1)
+  	page?: number = 1;
+  }
+  ```
+- **`@Body()` DTOs** — clients send JSON; numeric/date values arrive as native types or as strings by accident. Let the strict pipe reject malformed values. **Do NOT** add `@Type(() => Number)` / `@Type(() => Date)` on body fields, or you risk silent coercion (e.g. a `slug` field getting a Number if the wire says so).
 
 ## Testing
 
