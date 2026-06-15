@@ -1,98 +1,214 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# roonder-portfolio-backend
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+RESTful API for a personal portfolio, built with NestJS 11, TypeORM, and PostgreSQL. Single-admin in-house JWT auth, public read endpoints, and a contact flow that dispatches email through Resend.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+> **Status:** scaffolding. The four domain modules are stubbed, but the HTTP bootstrap (`main.ts`) is intentionally minimal — no global `ValidationPipe`, CORS, Swagger, or `setGlobalPrefix` are wired yet. Treat this as the foundation, not a finished product.
 
-## Description
+## Stack
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+- **Runtime:** Node.js, TypeScript 5.7
+- **Framework:** NestJS 11 (module-per-domain, screaming layout)
+- **ORM:** TypeORM 1.x with PostgreSQL (Supabase-hosted)
+- **Auth:** `@nestjs/jwt` + `passport-jwt` (in-house, single admin)
+- **Validation:** `class-validator` + `class-transformer` (DTOs), `Joi` for env vars
+- **Email:** `resend` SDK via NestJS `EventEmitter2`
+- **API docs:** `@nestjs/swagger` (module present, not yet mounted in `main.ts`)
+- **CORS:** `cors` package (module present, not yet wired)
+- **Testing:** Jest 30 + ts-jest, supertest + `@nestjs/testing` for E2E
 
-## Project setup
+## Getting Started
 
-```bash
-$ npm install
-```
+### Prerequisites
 
-## Compile and run the project
+- Node.js (LTS recommended)
+- npm
+- A PostgreSQL database (Supabase works out of the box)
+- A Resend API key for the contact flow
+
+### Install
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+npm install
 ```
 
-## Run tests
+### Environment variables
+
+Create a `.env` file at the project root. The server **refuses to boot** if any of these are missing — they are validated by Joi at startup.
+
+```env
+PORT=3000
+DATABASE_URL=postgres://user:password@host:5432/db
+JWT_SECRET=replace-with-a-long-random-string
+RESEND_API_KEY=re_xxx
+FRONTEND_URL=http://localhost:5173
+```
+
+See `openspec/specs/server_specs.md` (section 4) for the source-of-truth list.
+
+### Run
 
 ```bash
-# unit tests
-$ npm run test
+# Dev with watch + reload
+npm run start:dev
 
-# e2e tests
-$ npm run test:e2e
+# Debug mode (--inspect + watch)
+npm run start:debug
 
-# test coverage
-$ npm run test:cov
+# Production build + start
+npm run build
+npm run start:prod
 ```
 
-## Deployment
+The server listens on `PORT` (default `3000`).
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Scripts
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+| Command               | What it does                                              |
+| --------------------- | --------------------------------------------------------- |
+| `npm run build`       | Compile TypeScript via `nest build`                       |
+| `npm run start`       | Start once (no watch)                                     |
+| `npm run start:dev`   | Start with watch + reload                                 |
+| `npm run start:debug` | Start with inspector + watch                              |
+| `npm run start:prod`  | Run compiled `dist/main`                                  |
+| `npm test`            | Run unit tests (`*.spec.ts` colocated in `src/`)          |
+| `npm run test:watch`  | Run unit tests in watch mode                              |
+| `npm run test:cov`    | Run unit tests with coverage report                       |
+| `npm run test:debug`  | Run unit tests with Node inspector                        |
+| `npm run test:e2e`    | Run E2E tests in `test/` via `jest-e2e.json`              |
+| `npm run lint`        | ESLint with auto-fix on `src/`, `apps/`, `libs/`, `test/` |
+| `npm run format`      | Prettier on `src/**/*.ts` and `test/**/*.ts`              |
+
+## Project Structure
+
+```
+src/
+├── main.ts                      # HTTP bootstrap (currently minimal)
+├── app.module.ts                # Root module: imports all domain modules
+├── config/
+│   └── env.config.ts            # Joi schema for env validation
+├── auth/                        # Auth domain (controller, service, dto/, entities/)
+├── projects/                    # Projects domain
+├── reviews/                     # Reviews domain
+└── contact/                     # Contact domain
+
+test/                            # E2E specs (*.e2e-spec.ts) + jest-e2e.json
+openspec/                        # Spec-Driven Development artifacts
+├── config.yaml                  # SDD project config + phase rules
+├── changes/                     # Active changes (one folder per change)
+└── specs/
+    ├── server_specs.md          # Backend design source of truth
+    ├── ui_specs.md              # Frontend design (companion repo)
+    └── database-schema.dbml     # PostgreSQL schema (DBML)
+```
+
+Each domain module under `src/` follows the same shape:
+
+```
+domain/
+├── domain.module.ts
+├── domain.controller.ts
+├── domain.controller.spec.ts
+├── domain.service.ts
+├── domain.service.spec.ts
+├── dto/                         # create-*, update-*
+└── entities/                    # TypeORM entities
+```
+
+Unit tests are colocated next to the source they cover.
+
+## API Surface
+
+See `openspec/specs/server_specs.md` for the full design. Summary:
+
+### Auth
+
+| Method | Path            | Auth   | Purpose                            |
+| ------ | --------------- | ------ | ---------------------------------- |
+| POST   | `/auth/login`   | Public | Authenticate admin, return JWT     |
+| GET    | `/auth/profile` | JWT    | Return authenticated admin profile |
+
+### Projects
+
+| Method | Path              | Auth   | Purpose                                          |
+| ------ | ----------------- | ------ | ------------------------------------------------ |
+| GET    | `/projects`       | Public | List projects (paginated, `is_published` filter) |
+| GET    | `/projects/:slug` | Public | Project detail by slug                           |
+| POST   | `/projects`       | JWT    | Create project                                   |
+| PATCH  | `/projects/:id`   | JWT    | Update project                                   |
+| DELETE | `/projects/:id`   | JWT    | Delete project                                   |
+
+`cover_image` stores a URL; uploads are intended to use pre-signed URLs against a Supabase Storage bucket.
+
+### Reviews
+
+| Method | Path                         | Auth   | Purpose                                      |
+| ------ | ---------------------------- | ------ | -------------------------------------------- |
+| POST   | `/reviews`                   | Public | Submit review (`is_approved: false` default) |
+| GET    | `/reviews`                   | Public | List approved reviews                        |
+| GET    | `/admin/reviews`             | JWT    | List all reviews (admin)                     |
+| PATCH  | `/admin/reviews/:id/approve` | JWT    | Toggle approval                              |
+| POST   | `/reviews/:id/comments`      | Public | Add comment to a review                      |
+| DELETE | `/admin/reviews/:id`         | JWT    | Delete review (admin)                        |
+
+### Contact
+
+| Method | Path                  | Auth   | Purpose                                                                      |
+| ------ | --------------------- | ------ | ---------------------------------------------------------------------------- |
+| POST   | `/contacts`           | Public | Submit contact form (validates, persists, dispatches email async via Resend) |
+| GET    | `/admin/contacts`     | JWT    | List contact log (admin)                                                     |
+| PATCH  | `/admin/contacts/:id` | JWT    | Mark contact as read/replied (admin)                                         |
+
+The contact flow uses `EventEmitter2` to dispatch the email asynchronously and records the outcome in `email_sent_log`.
+
+## Testing
+
+Unit tests run with `npm test`. They are colocated as `*.spec.ts` inside `src/` (Jest `rootDir: src`, `testRegex: .*\\.spec\\.ts$`) and exercise the same modules the runtime imports.
+
+E2E tests live in `test/` as `*.e2e-spec.ts` and use supertest against a booted `AppModule`:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm run test:e2e
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Coverage:
 
-## Resources
+```bash
+npm run test:cov
+# Output in ./coverage
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+No coverage threshold is enforced. Raise it as the project matures — do it as a focused change so review stays small.
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+## Linting and Formatting
 
-## Support
+- ESLint 9 flat config with `typescript-eslint` (type-checked) + `prettier` plugin
+- Prettier: tabs, single quotes, trailing commas
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+```bash
+npm run lint
+npm run format
+```
 
-## Stay in touch
+## Spec-Driven Development
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+This project uses SDD (Spec-Driven Development) for non-trivial changes. The artifact store is file-based under `openspec/`.
+
+- `openspec/specs/` — source of truth for the backend, frontend, and database schema
+- `openspec/changes/{change-name}/` — active change artifacts (proposal, delta specs, design, tasks)
+- `openspec/changes/archive/` — completed changes
+- `openspec/config.yaml` — phase rules, test/build/lint commands, and `specs_layout`
+
+The full SDD pipeline:
+
+```
+proposal -> specs --> tasks -> apply -> verify -> archive
+             ^
+             |
+           design
+```
+
+`proposal` and `design` are run as needed; `specs` feeds both `design` and `tasks`. See `openspec/config.yaml` for the per-phase rules this project follows.
 
 ## License
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+UNLICENSED (private).
