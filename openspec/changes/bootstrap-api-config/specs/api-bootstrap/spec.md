@@ -1,4 +1,4 @@
-# Delta for `api-bootstrap`
+# api-bootstrap
 
 This is a NEW cross-cutting HTTP bootstrap capability. It defines how the NestJS
 application is wired at boot: global API prefix, request validation, CORS,

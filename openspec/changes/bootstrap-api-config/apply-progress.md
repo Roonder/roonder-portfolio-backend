@@ -101,3 +101,69 @@ Phase 1: app.module.ts — ConfigModule
 - [x] No code changes — this is a post-verify tidy, not a new SDD phase.
   The 8 pre-existing unused-DTO-param lint errors in domain service files
   remain out of scope (separate cleanup change).
+
+## Reconciliation pass (post-verify, 2026-06-15)
+
+This pass is bookkeeping only. Two pre-existing inconsistencies had to be fixed
+before `sdd-archive` would let the change through:
+
+- **Archive gate 7** ("persisted tasks artifact must reflect completion") was
+  failing because `openspec/changes/bootstrap-api-config/tasks.md` still showed
+  every substep as `- [ ]` even though `apply-progress.md` and `verify-report.md`
+  prove each one is done.
+- **Dispatcher spec-layout expectation** required the OpenSpec
+  `specs/<capability>/spec.md` wrapper layout. The change's `specs/` directory
+  held two flat delta files instead.
+
+What this pass did:
+
+- Reconciled `tasks.md` checkboxes. All 35 substeps now read `[x]`. The wording,
+  grouping, numbering, `## Conventions` block, `## Review Workload Forecast`
+  table, `## Phase N` blocks, `## Forecast` section, and `## Risk callouts`
+  section are byte-for-byte identical to the previous state — only the leading
+  `- [ ]` was flipped to `- [x]`.
+- Re-wrapped the spec deltas into the `specs/<capability>/spec.md` layout using
+  `git mv` (history preserved as renames):
+  - `specs/api-bootstrap.md` → `specs/api-bootstrap/spec.md`. The `# Delta for
+    api-bootstrap` heading was replaced with `# api-bootstrap` because this
+    capability is brand-new — the file is the canonical capability spec, not a
+    delta against an existing one.
+  - `specs/server_specs.md` → `specs/server_specs/spec.md`. The `# Delta for
+    server_specs` heading and the `## MODIFIED Requirements` /
+    `## ADDED Requirements` / `## REMOVED Requirements` / `## RENAMED
+    Requirements` structure are preserved as-is — this capability exists, so
+    the file remains a delta.
+- No source files were modified in this pass.
+- The merged-spect target `openspec/specs/` was not touched; that merge is
+  archive's job.
+
+Branch: `domain/auth` (9 commits ahead of `origin/domain/auth`):
+
+- `305a1ce` test(e2e): remove dead Hello World! scaffold test
+- `2603a15` docs(sdd): verify bootstrap-api-config (status: pass)
+- `cf2f17b` docs(sdd): persist bootstrap-api-config artifacts and reconcile design
+- `32f944b` style(main): prettier reformat of ConfigService.get call
+- `34e3254` docs(readme): document prefix, Swagger, and DTO conventions
+- `82a5d16` feat(main): use CORS origin function to skip mismatched origins
+- `8984b76` test(e2e): cover bootstrap behavior
+- `a2eeb87` feat(main): apply api/v1 prefix, global ValidationPipe, CORS, and Swagger
+- `3b75743` chore(app): wire ConfigModule globally with ENV_CONFIG Joi schema
+
+Pre-conditions confirmed in this pass (matching Step 1 of the dispatch):
+
+- `git log --oneline -10` shows the 9 work-unit commits on `domain/auth`.
+- `npm run build` — clean (exit 0).
+- `npm test` — 18/18 pass.
+- `npm run test:e2e` — 9/9 pass.
+- `apply-progress.md` (this file, prior sections) shows all 7 phases DONE plus
+  the post-verify cleanup.
+- `verify-report.md` — status `pass`, no CRITICAL, no WARNING.
+
+Final `git status --short` after the pass:
+
+- `M  openspec/changes/bootstrap-api-config/apply-progress.md` (this appended section)
+- `R  openspec/changes/bootstrap-api-config/specs/api-bootstrap.md -> openspec/changes/bootstrap-api-config/specs/api-bootstrap/spec.md` (rename + heading swap)
+- `R  openspec/changes/bootstrap-api-config/specs/server_specs.md -> openspec/changes/bootstrap-api-config/specs/server_specs/spec.md` (rename, content preserved)
+- `M  openspec/changes/bootstrap-api-config/tasks.md` (checkbox state only)
+
+Ready for `sdd-archive`.
