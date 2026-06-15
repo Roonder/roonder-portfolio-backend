@@ -18,8 +18,31 @@ export async function bootstrap(): Promise<INestApplication> {
 		}),
 	);
 	const configService = app.get(ConfigService<EnvConfig>);
-	const frontendUrl = configService.get("FRONTEND_URL", { infer: true });
-	app.enableCors({ origin: frontendUrl, credentials: true });
+	// FRONTEND_URL is required by ENV_CONFIG (Joi.string().required()),
+	// so it is present at runtime even though TypeScript's typing allows
+	// undefined. Cast to string to match the cors callback signature.
+	const frontendUrl = configService.get("FRONTEND_URL", { infer: true }) as string;
+	// `origin` is a function that echoes `frontendUrl` only when the
+	// incoming request's Origin matches it. The `cors` package, when
+	// `origin` is a plain string, attaches the header to every response
+	// regardless of the request's Origin — which would fail the spec's
+	// "different origin MUST NOT receive a matching header" requirement.
+	app.enableCors({
+		origin: (
+			requestOrigin: string | undefined,
+			callback: (err: Error | null, allow: boolean | string) => void,
+		) => {
+			// Allow non-browser requests (no Origin header) and same-origin.
+			if (!requestOrigin || requestOrigin === frontendUrl) {
+				callback(null, frontendUrl);
+				return;
+			}
+			// Different origin: do NOT set Access-Control-Allow-Origin.
+			// Returning false causes the cors middleware to skip the header.
+			callback(null, false);
+		},
+		credentials: true,
+	});
 	const swaggerConfig = new DocumentBuilder()
 		.setTitle("Roonder Portfolio API")
 		.setVersion("1.0")
