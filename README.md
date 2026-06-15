@@ -211,4 +211,4 @@ proposal -> specs --> tasks -> apply -> verify -> archive
 
 ## License
 
-UNLICENSED (private).
+[MIT](./LICENSE) — see the [LICENSE](./LICENSE) file for full text.
