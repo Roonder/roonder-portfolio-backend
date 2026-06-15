@@ -21,7 +21,9 @@ export async function bootstrap(): Promise<INestApplication> {
 	// FRONTEND_URL is required by ENV_CONFIG (Joi.string().required()),
 	// so it is present at runtime even though TypeScript's typing allows
 	// undefined. Cast to string to match the cors callback signature.
-	const frontendUrl = configService.get("FRONTEND_URL", { infer: true }) as string;
+	const frontendUrl = configService.get("FRONTEND_URL", {
+		infer: true,
+	}) as string;
 	// `origin` is a function that echoes `frontendUrl` only when the
 	// incoming request's Origin matches it. The `cors` package, when
 	// `origin` is a plain string, attaches the header to every response
