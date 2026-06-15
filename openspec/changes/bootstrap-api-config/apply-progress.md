@@ -87,3 +87,17 @@ Phase 4: README updates
 ## Next phase to run
 
 Phase 1: app.module.ts — ConfigModule
+
+## Post-verify cleanup (2026-06-15)
+
+- [x] Deleted `test/app.e2e-spec.ts`. The file referenced a `GET /` `Hello
+  World!` controller that was removed in the initial scaffolding and never
+  re-added; the test had been broken before this change and stayed broken
+  after. The bootstrap e2e (`test/bootstrap.e2e-spec.ts`) already exercises
+  app boot via `bootstrap()` and the missing-env-var scenario, so no smoke
+  coverage is lost.
+- [x] E2E suite: **9/9 pass** (was 9/10 with the dead test). Build clean,
+  unit 18/18, lint unchanged.
+- [x] No code changes — this is a post-verify tidy, not a new SDD phase.
+  The 8 pre-existing unused-DTO-param lint errors in domain service files
+  remain out of scope (separate cleanup change).

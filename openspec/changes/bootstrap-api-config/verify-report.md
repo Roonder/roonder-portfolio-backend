@@ -265,3 +265,23 @@ auditable.
 ## Verdict
 
 **PASS.** The change is ready for `sdd-archive`.
+
+---
+
+## Re-verification after post-verify cleanup (2026-06-15)
+
+Per user direction, `test/app.e2e-spec.ts` was deleted (the `Hello World!`
+controller it tested no longer exists in `src/` and was scaffold-only).
+Re-running the quality gate:
+
+- `npm run build` — clean
+- `npm test` — 18/18 pass
+- `npm run test:e2e` — **9/9 pass** (was 9/10 with the dead test)
+- `npm run lint` — unchanged (0 new errors)
+
+The change's overall verdict is unchanged: **PASS**. The pre-existing
+`Hello World!` e2e failure noted in the "out of scope" section above is
+now closed; all 9 e2e tests pass.
+
+The 8 unused-DTO-param lint errors in `src/{auth,contact,projects,reviews}/*.service.ts`
+remain out of scope (separate cleanup change).
