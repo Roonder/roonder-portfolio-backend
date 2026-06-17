@@ -254,7 +254,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   @Injectable()
   export class JwtAuthGuard extends AuthGuard('jwt') {}
   ```
-- [x] 5.5 **GREEN (per-controller wiring)**: apply `@UseGuards(JwtAuthGuard)` on `AuthController` class (controller-scope — matches spec §3.1 "Protected"). Add `JwtStrategy` and `JwtAuthGuard` to `AuthModule.providers`. (ADR-6 picked per-controller over method-level — the per-controller annotation is one line, the guard skips `/login`, `/refresh`, `/logout` automatically because no `Authorization` header there. The e2e in 5.1 confirms each.)
+- [x] 5.5 **GREEN (method-level wiring)**: apply `@UseGuards(JwtAuthGuard)` on the `getProfile` method only (per spec §Requirement: JwtAuthGuard). Add `JwtStrategy` and `JwtAuthGuard` to `AuthModule.providers`. (Per design ADR-6, method-level is the only working placement: class-level would 401 the public `login`/`refresh`/`logout` endpoints, and the `@Public()` opt-out was rejected in ADR-6 (c) as feature creep. The e2e in 5.1 confirms each.)
 - [x] 5.6 **GREEN (app.module.spec assertion)**: the assertion in 5.2 now passes — `app.module.ts` has no `APP_GUARD` line.
 - [x] 5.7 Run `npm run build`, `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format`. Commit.
 

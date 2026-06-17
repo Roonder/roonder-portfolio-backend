@@ -285,11 +285,14 @@ pins that format for the cookie `Max-Age` mapping).
 ### ADR-6: Guard wiring scope
 
 **Choice**. `JwtAuthGuard` (`@nestjs/passport` `AuthGuard('jwt')`)
-is applied **per-controller** with `@UseGuards(JwtAuthGuard)` on
-`AuthController.profile` only. NOT registered as a global `APP_GUARD`
-in `AppModule`. `JwtStrategy` is registered in `AuthModule`'s
-`providers` so the strategy name `'jwt'` resolves when
-`AuthGuard('jwt')` instantiates.
+is applied **method-level** with `@UseGuards(JwtAuthGuard)` on
+`AuthController.profile` only — the ONLY protected endpoint in this
+change. NOT registered as a global `APP_GUARD` in `AppModule`.
+`JwtStrategy` is registered in `AuthModule`'s `providers` so the
+strategy name `'jwt'` resolves when `AuthGuard('jwt')` instantiates.
+The `login`, `refresh`, and `logout` methods remain public: they
+receive the refresh-token cookie as the credential, NOT an
+`Authorization: Bearer` header.
 
 **Alternatives considered**.
 - (a) Global `APP_GUARD` provider in `AppModule`. **Rejected**: the
@@ -297,20 +300,23 @@ in `AppModule`. `JwtStrategy` is registered in `AuthModule`'s
   "must not opt out" — i.e. the default is public, opt-in is
   protected. A global guard inverts the default and forces every
   public endpoint to carry `@Public()` metadata.
-- (b) Method-level `@UseGuards(JwtAuthGuard)` on `profile()` only.
-  **Rejected**: same effect as per-controller, but controller-level
-  is one annotation instead of N — and the spec's
-  "only `AuthController.profile` carries `@UseGuards(JwtAuthGuard)`"
-  scenario is the controller-scope test.
+- (b) Class-level `@UseGuards(JwtAuthGuard)` on `AuthController`.
+  **Rejected**: the guard would apply to ALL methods, including the
+  public `login`, `refresh`, and `logout` endpoints. The guard
+  rejects any request without a valid `Authorization: Bearer`
+  header — verified empirically during apply: the three public
+  endpoints all returned 401 when the guard was on the class. To
+  make class-level work, the public methods would need a
+  `@Public()` opt-out mechanism, which is alternative (c).
 - (c) Custom `@Public()` decorator + global guard with reflection.
   **Rejected**: feature creep for a single protected endpoint.
 
-**Rationale**. The user pre-decided the per-controller scope. The
-test scenario "Guard is controller-scoped, not global" is asserted
-in Commit 7 by grepping `AppModule` source for `APP_GUARD` and
-asserting the absence. The auth module stays self-contained:
-`JwtStrategy` + `JwtAuthGuard` + the controller are all in
-`src/auth/`, no global registration in `AppModule`.
+**Rationale** (clarified during apply). The spec wording "applied
+per-controller" was originally ambiguous between "on the class
+decorator" and "in the controller file, not global". The
+implementable reading is method-level: only the `profile` method
+carries `@UseGuards(JwtAuthGuard)`, and the public methods stay
+un-guarded. The default (public) is preserved per ADR-6 (a).
 
 ### ADR-7: Seed CLI architecture
 

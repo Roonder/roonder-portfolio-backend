@@ -97,6 +97,10 @@ export class AuthController {
 	}
 
 	@ApiBearerAuth()
+	// `JwtAuthGuard` is method-level (not class-level) per design ADR-6
+	// and spec §Requirement: JwtAuthGuard. Class-level would reject the
+	// public login/refresh/logout endpoints with 401 — those endpoints
+	// read credentials from the `rt` cookie, not from `Authorization`.
 	@UseGuards(JwtAuthGuard)
 	@Get("profile")
 	getProfile(@Req() req: AuthenticatedRequest): {

@@ -280,9 +280,17 @@ The system MUST provide a `JwtAuthGuard` (`@nestjs/passport`
 `AuthGuard('jwt')`) backed by a `JwtStrategy` (`passport-jwt`) that reads
 the `Authorization: Bearer <token>` header, validates the signature with
 `JWT_SECRET`, checks `exp`, and hydrates `req.user = { id, email }`. The
-guard MUST be applied per-controller with `@UseGuards(JwtAuthGuard)` on
-`/auth/profile` and MUST NOT be registered as a global guard (future
-public endpoints like `GET /projects` must not opt out).
+guard MUST be applied method-level with `@UseGuards(JwtAuthGuard)` on
+`/auth/profile` (the only protected endpoint in this change) and MUST
+NOT be registered as a global guard (future public endpoints like
+`GET /projects` must not opt out).
+
+> **Implementation note**: "method-level" (not class-level) is the
+> only working placement given this design. The `login`, `refresh`,
+> and `logout` methods stay public by NOT carrying `@UseGuards`; a
+> class-level guard would reject all of them with 401. A
+> `@Public()` opt-out decorator was explicitly rejected in design
+> ADR-6 (c) as feature creep for a single protected endpoint.
 
 #### Scenario: Guard rejects requests without a bearer
 
@@ -297,12 +305,14 @@ public endpoints like `GET /projects` must not opt out).
 - WHEN the guard authenticates the request
 - THEN `req.user` equals `{ id: <user-id>, email: <user-email> }`
 
-#### Scenario: Guard is controller-scoped, not global
+#### Scenario: Guard is method-level, not global
 
 - GIVEN `JwtAuthGuard` is registered
 - WHEN `AppModule` is inspected
 - THEN no `APP_GUARD` provider references `JwtAuthGuard`
 - AND only `AuthController.profile` carries `@UseGuards(JwtAuthGuard)`
+- AND `AuthController.login`, `AuthController.refresh`, and
+  `AuthController.logout` do NOT carry `@UseGuards`
 
 ### Requirement: Seed Superuser CLI
 
