@@ -30,16 +30,19 @@ jest.mock("@nestjs/typeorm", () => {
 });
 
 import { Test, TestingModule } from "@nestjs/testing";
-import { Injectable, Module } from "@nestjs/common";
+import { Global, Injectable, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { getRepositoryToken } from "@nestjs/typeorm";
 import { ENV_CONFIG } from "./config/env.config";
 import { EnvConfig } from "./config/env.config";
 import { AuthModule } from "./auth/auth.module";
 import { ProjectsModule } from "./projects/projects.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { ContactModule } from "./contact/contact.module";
+import { UserEntity } from "./auth/entities/user.entity";
+import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -54,6 +57,33 @@ class ConfigConsumer {
 	exports: [ConfigConsumer],
 })
 class ConsumerModule {}
+
+// Fakes for the @InjectRepository() deps. TypeOrmModule is mocked above so
+// the repository tokens are not provided by the real forFeature — we
+// supply them through a @Global() TestFakesModule so AuthService can be
+// resolved inside AuthModule.
+const fakeUserRepo = { findOne: jest.fn(), save: jest.fn() };
+const fakeRefreshTokenRepo = {
+	findOne: jest.fn(),
+	insert: jest.fn(),
+	update: jest.fn(),
+};
+
+@Global()
+@Module({
+	providers: [
+		{ provide: getRepositoryToken(UserEntity), useValue: fakeUserRepo },
+		{
+			provide: getRepositoryToken(RefreshTokenEntity),
+			useValue: fakeRefreshTokenRepo,
+		},
+	],
+	exports: [
+		getRepositoryToken(UserEntity),
+		getRepositoryToken(RefreshTokenEntity),
+	],
+})
+class TestFakesModule {}
 
 describe("AppModule", () => {
 	let module: TestingModule;
@@ -71,6 +101,7 @@ describe("AppModule", () => {
 					ignoreEnvFile: true,
 					cache: true,
 				}),
+				TestFakesModule,
 				AuthModule,
 				ProjectsModule,
 				ReviewsModule,

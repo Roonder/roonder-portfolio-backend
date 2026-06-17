@@ -14,11 +14,21 @@ process.env.FRONTEND_URL = "https://app.example.com";
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { Global, Module } from "@nestjs/common";
+import { getRepositoryToken } from "@nestjs/typeorm";
 import request from "supertest";
 import type { App } from "supertest/types";
 import type { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { ConfigModule } from "@nestjs/config";
+import { configureApp } from "./main";
+import { ENV_CONFIG } from "./config/env.config";
+import { AuthModule } from "./auth/auth.module";
+import { ProjectsModule } from "./projects/projects.module";
+import { ReviewsModule } from "./reviews/reviews.module";
+import { ContactModule } from "./contact/contact.module";
+import { UserEntity } from "./auth/entities/user.entity";
+import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -38,18 +48,45 @@ jest.mock("@nestjs/typeorm", () => {
 	};
 });
 
-// Imports that depend on the mocked TypeOrmModule must come AFTER the mock.
-import { configureApp } from "./main";
-import { ENV_CONFIG } from "./config/env.config";
-import { AuthModule } from "./auth/auth.module";
-import { ProjectsModule } from "./projects/projects.module";
-import { ReviewsModule } from "./reviews/reviews.module";
-import { ContactModule } from "./contact/contact.module";
-
 const mainSource = readFileSync(resolve(__dirname, "main.ts"), "utf8");
 
+// Fakes for the @InjectRepository() deps. AuthService is constructed inside
+// AuthModule, so we declare a thin module that re-exports the fakes and
+// have AuthModule consume them via @Global() in a single test-time wiring
+// (see `TestFakesModule` below).
+const fakeUserRepo = { findOne: jest.fn(), save: jest.fn() };
+const fakeRefreshTokenRepo = {
+	findOne: jest.fn(),
+	insert: jest.fn(),
+	update: jest.fn(),
+};
+
+// A global test module that supplies the @InjectRepository() tokens. The
+// fakes are needed because we mock @nestjs/typeorm in this file (so no real
+// TypeOrmModule.forFeature is registered) but AuthService still expects the
+// tokens to be resolvable. `@Global()` makes the providers visible to every
+// module in the test graph (including the imported AuthModule).
+@Global()
+@Module({
+	providers: [
+		{ provide: getRepositoryToken(UserEntity), useValue: fakeUserRepo },
+		{
+			provide: getRepositoryToken(RefreshTokenEntity),
+			useValue: fakeRefreshTokenRepo,
+		},
+	],
+	exports: [
+		getRepositoryToken(UserEntity),
+		getRepositoryToken(RefreshTokenEntity),
+	],
+})
+class TestFakesModule {}
+
 // Mirrors src/main.ts bootstrap but uses Test.createTestingModule + init()
-// (no listen()). Mocks TypeOrmModule so no DB connection is attempted.
+// (no listen()). Mocks TypeOrmModule so no DB connection is attempted; the
+// @InjectRepository() tokens are supplied by TestFakesModule which is
+// imported by AuthModule via the `imports` chain (we add it here so its
+// exports are visible to AuthModule).
 async function bootstrapTestApp(): Promise<INestApplication> {
 	const moduleRef = await Test.createTestingModule({
 		imports: [
@@ -59,6 +96,7 @@ async function bootstrapTestApp(): Promise<INestApplication> {
 				ignoreEnvFile: true,
 				cache: true,
 			}),
+			TestFakesModule,
 			AuthModule,
 			ProjectsModule,
 			ReviewsModule,

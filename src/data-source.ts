@@ -1,5 +1,6 @@
 import { DataSource } from "typeorm";
 import { UserEntity } from "./auth/entities/user.entity";
+import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 
 /**
  * Shared TypeORM DataSource. The seed CLI in `src/cli/seed-superuser.ts`
@@ -13,7 +14,7 @@ import { UserEntity } from "./auth/entities/user.entity";
 export const AppDataSource = new DataSource({
 	type: "postgres",
 	url: process.env.DATABASE_URL,
-	entities: [UserEntity],
+	entities: [UserEntity, RefreshTokenEntity],
 	migrations: [],
 	synchronize: false,
 });
