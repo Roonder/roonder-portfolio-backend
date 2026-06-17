@@ -24,8 +24,12 @@ Since the system is designed for a single administrator (the owner), a proprieta
 
 ### 3.1. Auth Domain
 
-- `POST /api/v1/auth/login`: Authenticates the admin user and returns an access_token.
-- `GET /api/v1/auth/profile`: Returns the authenticated admin profile data (Protected).
+- `POST /api/v1/auth/login`: Authenticates the admin user and returns an access_token. Public.
+- `POST /api/v1/auth/refresh`: Rotates the refresh cookie and returns a new access token. Public. Performs family-level reuse detection (any reuse of an already-revoked refresh token revokes the entire family).
+- `POST /api/v1/auth/logout`: Revokes the presented refresh token and clears the `rt` cookie. Public.
+- `GET /api/v1/auth/profile`: Returns the authenticated admin profile data `{ id, email }`. Protected by `JwtAuthGuard`.
+
+Full request/response semantics, cookie attributes, storage, and reuse behavior are defined in the `auth-domain` capability spec at `openspec/specs/auth-domain/spec.md`.
 
 ### 3.2. Projects Domain
 
@@ -75,4 +79,6 @@ All HTTP routes defined by the Auth, Projects, Reviews, and Contact domains MUST
 ## 4. Environment Variable Management (Joi Validation)
 
 Joi will be used in ConfigModule.forRoot() to guarantee that the server does not boot if critical credentials are missing.
-Required variables: `PORT, DATABASE_URL, JWT_SECRET, RESEND_API_KEY, FRONTEND_URL`.
+Required variables: `PORT, DATABASE_URL, JWT_SECRET, JWT_EXPIRES_IN, JWT_REFRESH_SECRET, JWT_REFRESH_EXPIRES_IN, SUPERUSER_EMAIL, SUPERUSER_PASSWORD, RESEND_API_KEY, FRONTEND_URL`.
+
+The JWT and superuser variables are validated per the requirements in the `auth-domain` capability spec at `openspec/specs/auth-domain/spec.md` (Requirements: Access Token Expiration, Refresh Token Secret, Refresh Token Expiration, Bootstrap Superuser Email, Bootstrap Superuser Password). In particular, `JWT_REFRESH_SECRET` MUST be at least 32 characters and MUST differ from `JWT_SECRET`; `JWT_REFRESH_EXPIRES_IN` MUST be a positive integer string of seconds; `SUPERUSER_PASSWORD` MUST be at least 8 characters.

@@ -34,25 +34,25 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
 
 ### 1. Commit 1 — deps + env schema (`chore(auth): ...`)
 
-- [ ] 1.1 **RED**: extend the (f) `describe('missing required env var prevents boot')` block in `test/bootstrap.e2e-spec.ts` to also cover the 5 new keys. Each missing key (one test per key, parameterized) must throw a Joi error referencing the missing key name. Run `npm run test:e2e` — fails because `ENV_CONFIG` doesn't yet require them.
-- [ ] 1.2 **GREEN (env schema)**: extend `EnvConfig` interface in `src/config/env.config.ts` with `JWT_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `SUPERUSER_EMAIL`, `SUPERUSER_PASSWORD`. Extend `ENV_CONFIG` Joi schema per design ADR-5/§server_specs.md ADDED Requirements:
+- [x] 1.1 **RED**: extend the (f) `describe('missing required env var prevents boot')` block in `test/bootstrap.e2e-spec.ts` to also cover the 5 new keys. Each missing key (one test per key, parameterized) must throw a Joi error referencing the missing key name. Run `npm run test:e2e` — fails because `ENV_CONFIG` doesn't yet require them.
+- [x] 1.2 **GREEN (env schema)**: extend `EnvConfig` interface in `src/config/env.config.ts` with `JWT_EXPIRES_IN`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_IN`, `SUPERUSER_EMAIL`, `SUPERUSER_PASSWORD`. Extend `ENV_CONFIG` Joi schema per design ADR-5/§server_specs.md ADDED Requirements:
   - `JWT_EXPIRES_IN: Joi.string().required()` (NestJS duration parser will validate format at issue time)
   - `JWT_REFRESH_SECRET: Joi.string().min(32).invalid(Joi.ref('JWT_SECRET')).required()`
   - `JWT_REFRESH_EXPIRES_IN: Joi.string().pattern(/^\d+$/).required()` (seconds-notation)
   - `SUPERUSER_EMAIL: Joi.string().email().required()`
   - `SUPERUSER_PASSWORD: Joi.string().min(8).required()`
-- [ ] 1.3 **GREEN (test stubs)**: update the `process.env` stub at the top of `test/bootstrap.e2e-spec.ts` and `src/main.spec.ts` and `src/app.module.spec.ts` to provide the 5 new keys (e.g. `JWT_EXPIRES_IN='15m'`, `JWT_REFRESH_SECRET='refresh-secret-32-chars-min-.......'`, `JWT_REFRESH_EXPIRES_IN='2592000'`, `SUPERUSER_EMAIL='admin@test.io'`, `SUPERUSER_PASSWORD='test-password'`). Without these, even unit tests that import `AppModule` would fail at module-decoration.
-- [ ] 1.4 **GREEN (deps)**: `npm install @nestjs/typeorm@^11 @nestjs/passport@^11 bcrypt@^5 pg@^8` (deps) and `npm install --save-dev @types/bcrypt@^5 @types/pg@^8`. Verify `package.json` and `package-lock.json` reflect the additions; run `npm run build` and `npm test` to confirm nothing regressed.
-- [ ] 1.5 Run `npm run lint`, `npm run format` on touched files. Commit with body that lists the 5 new keys.
+- [x] 1.3 **GREEN (test stubs)**: update the `process.env` stub at the top of `test/bootstrap.e2e-spec.ts` and `src/main.spec.ts` and `src/app.module.spec.ts` to provide the 5 new keys (e.g. `JWT_EXPIRES_IN='15m'`, `JWT_REFRESH_SECRET='refresh-secret-32-chars-min-.......'`, `JWT_REFRESH_EXPIRES_IN='2592000'`, `SUPERUSER_EMAIL='admin@test.io'`, `SUPERUSER_PASSWORD='test-password'`). Without these, even unit tests that import `AppModule` would fail at module-decoration.
+- [x] 1.4 **GREEN (deps)**: `npm install @nestjs/typeorm@^11 @nestjs/passport@^11 bcrypt@^5 pg@^8` (deps) and `npm install --save-dev @types/bcrypt@^5 @types/pg@^8`. Verify `package.json` and `package-lock.json` reflect the additions; run `npm run build` and `npm test` to confirm nothing regressed.
+- [x] 1.5 Run `npm run lint`, `npm run format` on touched files. Commit with body that lists the 5 new keys.
 
 ### 2. Commit 2 — TypeORM wiring + User entity (`feat(data): ...`)
 
-- [ ] 2.1 **RED**: create `src/auth/entities/user.entity.spec.ts`. Test the entity metadata:
+- [x] 2.1 **RED**: create `src/auth/entities/user.entity.spec.ts`. Test the entity metadata:
   - `expect(columns).toContain('id', 'email', 'password', 'createdAt', 'updatedAt')` (use `getMetadata(UserEntity).columns.map(c => c.propertyName)`)
   - `expect(emailColumn.unique).toBe(true)`
   - `expect(passwordColumn.select).toBe(false)`
   - Run `npm test -- --testPathPattern=user.entity` — fails because `UserEntity` doesn't exist yet.
-- [ ] 2.2 **GREEN**: create `src/auth/entities/user.entity.ts` matching `openspec/specs/database-schema.dbml` `users` table:
+- [x] 2.2 **GREEN**: create `src/auth/entities/user.entity.ts` matching `openspec/specs/database-schema.dbml` `users` table:
   ```ts
   @Entity('users')
   export class UserEntity {
@@ -64,7 +64,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   }
   ```
   Delete `src/auth/entities/auth.entity.ts` (stub). Run `npm test -- --testPathPattern=user.entity` — passes.
-- [ ] 2.3 **GREEN (data-source)**: create `src/data-source.ts` exporting `AppDataSource`:
+- [x] 2.3 **GREEN (data-source)**: create `src/data-source.ts` exporting `AppDataSource`:
   ```ts
   export const AppDataSource = new DataSource({
     type: 'postgres',
@@ -75,15 +75,15 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   });
   ```
   This file is currently NOT yet imported by `AppModule` — that lands in 2.4. The seed CLI in Commit 6 will reuse it.
-- [ ] 2.4 **GREEN (module wiring)**: extend `src/app.module.ts` with `TypeOrmModule.forRootAsync({ useFactory: cs => AppDataSource.options, inject: [ConfigService] })`. Extend `src/auth/auth.module.ts` with `TypeOrmModule.forFeature([UserEntity])`.
-- [ ] 2.5 **RED (bootstrap still green)**: confirm `src/main.spec.ts` prefix probe at line 40-56 still hits `POST /api/v1/auth` and expects 201 (it still does — the stub `AuthController` is still in place). No test change in this commit. The fixup is Commit 7.
-- [ ] 2.6 **RED (DTO deletion — net negative LOC, not a test)**: delete `src/auth/dto/create-auth.dto.ts` and `src/auth/dto/update-auth.dto.ts` — they are referenced only by the stub `AuthController` (still alive) and `auth.controller.spec.ts` (still alive). The 2.7 task fixes the imports.
-- [ ] 2.7 **GREEN (test import fixup)**: update `src/auth/auth.controller.spec.ts` and `src/auth/auth.service.spec.ts` to drop imports of the deleted DTO files. They still smoke-test the stubs — Commit 3 + Commit 4 will replace those tests wholesale.
-- [ ] 2.8 Run `npm run build`, `npm test`, `npm run lint`, `npm run format`. Commit. (Note: `AuthService` and `AuthController` are still the stubs; the bootstrap e2e prefix probe at line 107-121 in `test/bootstrap.e2e-spec.ts` still passes because the stub `AuthController` returns 201 on `POST /api/v1/auth`.)
+- [x] 2.4 **GREEN (module wiring)**: extend `src/app.module.ts` with `TypeOrmModule.forRootAsync({ useFactory: cs => AppDataSource.options, inject: [ConfigService] })`. Extend `src/auth/auth.module.ts` with `TypeOrmModule.forFeature([UserEntity])`.
+- [x] 2.5 **RED (bootstrap still green)**: confirm `src/main.spec.ts` prefix probe at line 40-56 still hits `POST /api/v1/auth` and expects 201 (it still does — the stub `AuthController` is still in place). No test change in this commit. The fixup is Commit 7.
+- [x] 2.6 **RED (DTO deletion — net negative LOC, not a test)**: delete `src/auth/dto/create-auth.dto.ts` and `src/auth/dto/update-auth.dto.ts` — they are referenced only by the stub `AuthController` (still alive) and `auth.controller.spec.ts` (still alive). The 2.7 task fixes the imports.
+- [x] 2.7 **GREEN (test import fixup)**: update `src/auth/auth.controller.spec.ts` and `src/auth/auth.service.spec.ts` to drop imports of the deleted DTO files. They still smoke-test the stubs — Commit 3 + Commit 4 will replace those tests wholesale.
+- [x] 2.8 Run `npm run build`, `npm test`, `npm run lint`, `npm run format`. Commit. (Note: `AuthService` and `AuthController` are still the stubs; the bootstrap e2e prefix probe at line 107-121 in `test/bootstrap.e2e-spec.ts` still passes because the stub `AuthController` returns 201 on `POST /api/v1/auth`.)
 
 ### 3. Commit 3 — AuthService + bcrypt + JWT (`feat(auth): ...`)
 
-- [ ] 3.1 **RED**: replace `src/auth/auth.service.spec.ts` with 9 branches:
+- [x] 3.1 **RED**: replace `src/auth/auth.service.spec.ts` with 9 branches:
   - login happy path → returns `{ accessToken, expiresIn, refreshToken, refreshExpiresInSeconds }`; `bcrypt.compare` invoked on the stored hash; `rtRepo.insert` called with `{ user_id, family_id: <uuid>, hashed_token: sha256(refreshToken), expires_at }`
   - login unknown email → throws `UnauthorizedException`; NO `bcrypt.compare` against a real hash (constant-time dummy compare path is a follow-up — see Open Question §G.2)
   - login wrong password → throws `UnauthorizedException`; `bcrypt.compare` called once and returned false
@@ -95,7 +95,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   - logout missing cookie → throws `UnauthorizedException`; no DB mutation
   - getProfile with bearer payload `{ id, email }` → returns `{ id, email }` (no DB hit needed in the happy path)
   Run `npm test -- --testPathPattern=auth.service` — fails because `AuthService` is still the stub.
-- [ ] 3.2 **GREEN (refresh-token entity)**: create `src/auth/entities/refresh-token.entity.ts` matching the dbml delta:
+- [x] 3.2 **GREEN (refresh-token entity)**: create `src/auth/entities/refresh-token.entity.ts` matching the dbml delta:
   ```ts
   @Entity('refresh_tokens')
   @Index('idx_refresh_tokens_family_id', ['familyId'])
@@ -111,7 +111,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
     @CreateDateColumn({ name: 'created_at' }) createdAt!: Date;
   }
   ```
-- [ ] 3.3 **GREEN (AuthService.login)**: replace `src/auth/auth.service.ts`. Inject `@InjectRepository(UserEntity)`, `@InjectRepository(RefreshTokenEntity)`, `JwtService`, `ConfigService<EnvConfig>`. `login(email, password)`:
+- [x] 3.3 **GREEN (AuthService.login)**: replace `src/auth/auth.service.ts`. Inject `@InjectRepository(UserEntity)`, `@InjectRepository(RefreshTokenEntity)`, `JwtService`, `ConfigService<EnvConfig>`. `login(email, password)`:
   1. `userRepo.findOne({ where: { email }, select: ['id', 'email', 'password'] })` (force-select because `password` has `select: false`)
   2. `if (!user) throw new UnauthorizedException()`
   3. `const ok = await bcrypt.compare(password, user.password); if (!ok) throw new UnauthorizedException()`
@@ -122,7 +122,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   8. `const expiresAt = new Date(Date.now() + Number(cs.get('JWT_REFRESH_EXPIRES_IN')) * 1000)`
   9. `await rtRepo.insert({ userId: user.id, familyId, hashedToken, expiresAt })`
   10. Return `{ accessToken, expiresIn: <derived from JWT_EXPIRES_IN seconds>, refreshToken, refreshExpiresInSeconds: Number(cs.get('JWT_REFRESH_EXPIRES_IN')) }`
-- [ ] 3.4 **GREEN (AuthService.refresh)**: `refresh(presentedToken)`:
+- [x] 3.4 **GREEN (AuthService.refresh)**: `refresh(presentedToken)`:
   1. If `!presentedToken` → `throw new UnauthorizedException()`
   2. `const presentedHash = sha256(presentedToken)`
   3. `const row = await rtRepo.findOne({ where: { hashedToken: presentedHash } })`
@@ -134,21 +134,21 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   9. `const newRow = await rtRepo.insert({ userId: row.userId, familyId: row.familyId, hashedToken: newHash, expiresAt: ... })`
   10. `await rtRepo.update(row.id, { replacedBy: newRow.identifiers[0].id })`
   11. Issue new access token, return same shape as login + `{ clearCookie: false, refreshToken: newRefreshToken }`
-- [ ] 3.5 **GREEN (AuthService.logout)**: `logout(presentedToken)`:
+- [x] 3.5 **GREEN (AuthService.logout)**: `logout(presentedToken)`:
   1. If `!presentedToken` → throw
   2. `const presentedHash = sha256(presentedToken)`
   3. `const row = await rtRepo.findOne({ where: { hashedToken: presentedHash } })`
   4. If `!row` → throw + return `{ clearCookie: true }`
   5. `await rtRepo.update(row.id, { revokedAt: new Date() })` (presented row ONLY — spec question #3 resolved)
   6. Return `{ clearCookie: true }`
-- [ ] 3.6 **GREEN (AuthService.getProfile)**: `getProfile(reqUser)` returns `{ id: reqUser.id, email: reqUser.email }` (pure mapping).
-- [ ] 3.7 **GREEN (AuthModule providers)**: extend `src/auth/auth.module.ts`:
+- [x] 3.6 **GREEN (AuthService.getProfile)**: `getProfile(reqUser)` returns `{ id: reqUser.id, email: reqUser.email }` (pure mapping).
+- [x] 3.7 **GREEN (AuthModule providers)**: extend `src/auth/auth.module.ts`:
   ```ts
   imports: [JwtModule.registerAsync({ useFactory: cs => ({ secret: cs.get('JWT_SECRET'), signOptions: { expiresIn: cs.get('JWT_EXPIRES_IN') } }), inject: [ConfigService] }), PassportModule, TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity])],
   providers: [AuthService],
   ```
   (JwtStrategy and JwtAuthGuard land in Commit 5; for now the service tests inject `JwtService` directly via `JwtModule.register`.)
-- [ ] 3.8 Run `npm run build`, `npm test -- --testPathPattern=auth.service`, `npm run lint`, `npm run format`. Commit. Note: the bootstrap e2e prefix probe at `test/bootstrap.e2e-spec.ts:107` STILL passes (the stub `AuthController` is alive).
+- [x] 3.8 Run `npm run build`, `npm test -- --testPathPattern=auth.service`, `npm run lint`, `npm run format`. Commit. Note: the bootstrap e2e prefix probe at `test/bootstrap.e2e-spec.ts:107` STILL passes (the stub `AuthController` is alive).
 
 ### 4. Commit 4 — AuthController + DTOs + Swagger (`feat(auth): ...`)
 
@@ -260,14 +260,14 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
 
 ### 6. Commit 6 — seed-superuser CLI (`feat(cli): ...`)
 
-- [ ] 6.1 **RED**: create `src/cli/seed-superuser.spec.ts` with 5 branches on the pure function `seedSuperuser(email, password, userRepo)`:
+- [x] 6.1 **RED**: create `src/cli/seed-superuser.spec.ts` with 5 branches on the pure function `seedSuperuser(email, password, userRepo)`:
   - happy: `userRepo.findOne` returns null → calls `userRepo.create({ email, password: hashed })` + `userRepo.save(...)`
   - existing row: `userRepo.findOne` returns row → calls `userRepo.update(row.id, { password: hashed })`
   - `bcrypt.compare(SUPERUSER_PASSWORD, row.password)` would be true after a re-run (asserted via the spec's idempotency contract)
   - missing `SUPERUSER_EMAIL`: throws an error naming `SUPERUSER_EMAIL` BEFORE any `repo` call (spy on `userRepo.findOne` — should NOT be invoked)
   - missing/short `SUPERUSER_PASSWORD`: same as above for `SUPERUSER_PASSWORD`
   Run `npm test -- --testPathPattern=seed-superuser` — fails because the file doesn't exist.
-- [ ] 6.2 **GREEN (pure function)**: create `src/cli/seed-superuser.ts` with the exported pure function:
+- [x] 6.2 **GREEN (pure function)**: create `src/cli/seed-superuser.ts` with the exported pure function:
   ```ts
   export async function seedSuperuser(email: string, password: string, userRepo: Repository<UserEntity>): Promise<void> {
     if (!email) throw new Error('SUPERUSER_EMAIL is required');
@@ -278,7 +278,7 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
     else await userRepo.save(userRepo.create({ email, password: hashed }));
   }
   ```
-- [ ] 6.3 **GREEN (I/O wrapper)**: in the same file, add the `main()` function:
+- [x] 6.3 **GREEN (I/O wrapper)**: in the same file, add the `main()` function:
   ```ts
   async function main() {
     const email = process.env.SUPERUSER_EMAIL;
@@ -296,35 +296,35 @@ Land the entire auth domain in **7 work-unit commits** on `domain/auth`, ordered
   }
   if (require.main === module) void main();
   ```
-- [ ] 6.4 **GREEN (npm script)**: add to `package.json` `"scripts"`:
+- [x] 6.4 **GREEN (npm script)**: add to `package.json` `"scripts"`:
   ```json
   "seed:superuser": "ts-node src/cli/seed-superuser.ts"
   ```
-- [ ] 6.5 Run `npm run build`, `npm test -- --testPathPattern=seed-superuser`, `npm run lint`, `npm run format`. Commit.
+- [x] 6.5 Run `npm run build`, `npm test -- --testPathPattern=seed-superuser`, `npm run lint`, `npm run format`. Commit.
 
 ### 7. Commit 7 — bootstrap test fixup + README + spec deltas (`chore(specs): ...`)
 
 > Spec deltas (`openspec/specs/server_specs.md` §3.1 + `database-schema.dbml` `refresh_tokens` table) are NOT touched in apply. They are merged by `sdd-archive`. Apply only fixes the broken bootstrap tests and ships the README.
 
-- [ ] 7.1 **RED (refactor — describes the swap)**: in `src/main.spec.ts`, the prefix probe at line 40-56 currently calls `POST /api/v1/auth` and expects 201. Once Commit 4 replaced `AuthController`, this returns 401 (validation pipe rejects empty body). The fixup per design ADR-8: replace the `POST /api/v1/auth` probe with `POST /api/v1/__bootstrap_fixture` (the test-only `FixtureController` already exists in `test/bootstrap.e2e-spec.ts` but NOT in the unit test file — copy the pattern over).
-- [ ] 7.2 **GREEN (unit test swap)**: in `src/main.spec.ts`, mirror the fixture pattern from `test/bootstrap.e2e-spec.ts`:
+- [x] 7.1 **RED (refactor — describes the swap)**: in `src/main.spec.ts`, the prefix probe at line 40-56 currently calls `POST /api/v1/auth` and expects 201. Once Commit 4 replaced `AuthController`, this returns 401 (validation pipe rejects empty body). The fixup per design ADR-8: replace the `POST /api/v1/auth` probe with `POST /api/v1/__bootstrap_fixture` (the test-only `FixtureController` already exists in `test/bootstrap.e2e-spec.ts` but NOT in the unit test file — copy the pattern over).
+- [x] 7.2 **GREEN (unit test swap)**: in `src/main.spec.ts`, mirror the fixture pattern from `test/bootstrap.e2e-spec.ts`:
   ```ts
   class FixtureDto { @IsString() name!: string; }
   @Controller('__bootstrap_fixture') class FixtureController { @Post() post(@Body() dto: FixtureDto) { return dto; } }
   @Module({ controllers: [FixtureController] }) class FixtureModule {}
   ```
   Then replace the `Test.createTestingModule({ imports: [AppModule] })` import list with `{ imports: [AppModule, FixtureModule] }`. Update the prefix probe (line 45-49) to `POST /api/v1/__bootstrap_fixture` with `{ name: 'x' }` body and expect 201. Keep the `POST /__bootstrap_fixture` (unprefixed) 404 assertion.
-- [ ] 7.3 **GREEN (e2e swap)**: in `test/bootstrap.e2e-spec.ts`:
+- [x] 7.3 **GREEN (e2e swap)**: in `test/bootstrap.e2e-spec.ts`:
   - The `describe('global /api/v1 prefix')` block at lines 106-122 currently probes `POST /api/v1/auth` (expects 201). Swap to `POST /api/v1/__bootstrap_fixture` with `{ name: 'x' }` body → 201, and `POST /__bootstrap_fixture` → 404. The fixture module is ALREADY imported (`FixtureModule` at line 49) — no new module declaration needed; just change the URL.
   - The CORS preflight test at line 169-180 currently hits `/api/v1/auth/login`. Change to `/api/v1/__bootstrap_fixture`.
   - The CORS preflight non-echo test at line 184-193 currently hits `/auth/login`. Change to `/__bootstrap_fixture`.
-- [ ] 7.4 **GREEN (README)**: in `README.md`:
+- [x] 7.4 **GREEN (README)**: in `README.md`:
   - Extend the `### Auth` table (line 129-134) to include `/api/v1/auth/refresh` and `/api/v1/auth/logout` rows
   - Update `### Environment variables` (line 38-44) to list the 5 new vars
   - Add a `### Bootstrap` subsection after the env table documenting `npm run seed:superuser` with a warning that `SUPERUSER_PASSWORD` is a bootstrap secret (production deployments MUST rotate after first login)
   - Extend the `### Scripts` table (line 66-79) with the new `seed:superuser` script
-- [ ] 7.5 **GREEN (deletion — bootstrap stubs)**: delete `src/auth/dto/create-auth.dto.ts` and `src/auth/dto/update-auth.dto.ts` if not already deleted in 2.6, and `src/auth/entities/auth.entity.ts` if not already deleted in 2.2. Verify `git grep -n 'CreateAuthDto\|UpdateAuthDto\|AuthEntity'` returns no matches in `src/`.
-- [ ] 7.6 Run `npm run build`, `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format`. Confirm all 4 prefix-related assertions (2 in `src/main.spec.ts`, 2 in `test/bootstrap.e2e-spec.ts`) pass against `/api/v1/__bootstrap_fixture` and that `test/auth.e2e-spec.ts` covers the 4 auth endpoints + guard. Commit.
+- [x] 7.5 **GREEN (deletion — bootstrap stubs)**: delete `src/auth/dto/create-auth.dto.ts` and `src/auth/dto/update-auth.dto.ts` if not already deleted in 2.6, and `src/auth/entities/auth.entity.ts` if not already deleted in 2.2. Verify `git grep -n 'CreateAuthDto\|UpdateAuthDto\|AuthEntity'` returns no matches in `src/`.
+- [x] 7.6 Run `npm run build`, `npm test`, `npm run test:e2e`, `npm run lint`, `npm run format`. Confirm all 4 prefix-related assertions (2 in `src/main.spec.ts`, 2 in `test/bootstrap.e2e-spec.ts`) pass against `/api/v1/__bootstrap_fixture` and that `test/auth.e2e-spec.ts` covers the 4 auth endpoints + guard. Commit.
 
 ## D. Test strategy
 
