@@ -2,7 +2,12 @@
 // at decoration time sees valid values for the app boot tests.
 process.env.PORT = "3001";
 process.env.DATABASE_URL = "postgres://test:test@localhost:5432/test";
-process.env.JWT_SECRET = "test-secret";
+process.env.JWT_SECRET = "test-secret-32-chars-min-..................";
+process.env.JWT_EXPIRES_IN = "15m";
+process.env.JWT_REFRESH_SECRET = "refresh-secret-32-chars-min-......";
+process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
+process.env.SUPERUSER_EMAIL = "admin@test.io";
+process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
 
@@ -258,4 +263,48 @@ describe("missing required env var prevents boot", () => {
 			}).compile(),
 		).rejects.toThrow(/JWT_SECRET/);
 	});
+
+	// New keys added by the auth-domain change. The env stub above omits them
+	// so each one is independently missing — each test must reject with a Joi
+	// error referencing the missing key name.
+	const NEW_AUTH_KEYS = [
+		"JWT_EXPIRES_IN",
+		"JWT_REFRESH_SECRET",
+		"JWT_REFRESH_EXPIRES_IN",
+		"SUPERUSER_EMAIL",
+		"SUPERUSER_PASSWORD",
+	] as const;
+
+	for (const missingKey of NEW_AUTH_KEYS) {
+		it(`rejects with a Joi validation error when ${missingKey} is absent`, async () => {
+			process.env = {
+				...ORIGINAL_ENV,
+				PORT: "3000",
+				DATABASE_URL: "postgres://test:test@localhost:5432/test",
+				JWT_SECRET: "test-secret-32-chars-min-..................",
+				JWT_EXPIRES_IN: "15m",
+				JWT_REFRESH_SECRET: "refresh-secret-32-chars-min-......",
+				JWT_REFRESH_EXPIRES_IN: "2592000",
+				SUPERUSER_EMAIL: "admin@test.io",
+				SUPERUSER_PASSWORD: "test-password",
+				RESEND_API_KEY: "re_test",
+				FRONTEND_URL: "https://app.example.com",
+			};
+			// Ensure the key under test is missing.
+			delete process.env[missingKey];
+
+			await expect(
+				Test.createTestingModule({
+					imports: [
+						ConfigModule.forRoot({
+							isGlobal: true,
+							validationSchema: ENV_CONFIG,
+							ignoreEnvFile: true,
+							cache: true,
+						}),
+					],
+				}).compile(),
+			).rejects.toThrow(new RegExp(missingKey));
+		});
+	}
 });

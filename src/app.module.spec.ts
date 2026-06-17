@@ -2,7 +2,12 @@
 // ConfigModule.forRoot() at decoration time sees valid values.
 process.env.PORT = "3000";
 process.env.DATABASE_URL = "postgres://test:test@localhost:5432/test";
-process.env.JWT_SECRET = "test-secret";
+process.env.JWT_SECRET = "test-secret-32-chars-min-..................";
+process.env.JWT_EXPIRES_IN = "15m";
+process.env.JWT_REFRESH_SECRET = "refresh-secret-32-chars-min-......";
+process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
+process.env.SUPERUSER_EMAIL = "admin@test.io";
+process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
 
