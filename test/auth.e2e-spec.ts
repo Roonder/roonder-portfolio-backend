@@ -31,13 +31,15 @@ import { createHash } from "node:crypto";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigModule, ConfigService } from "@nestjs/config";
-import { JwtModule } from "@nestjs/jwt";
+import { JwtModule, JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import cookieParser from "cookie-parser";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { AuthController } from "../src/auth/auth.controller";
 import { AuthService } from "../src/auth/auth.service";
+import { JwtAuthGuard } from "../src/auth/guards/jwt-auth.guard";
+import { JwtStrategy } from "../src/auth/strategies/jwt.strategy";
 import { UserEntity } from "../src/auth/entities/user.entity";
 import { RefreshTokenEntity } from "../src/auth/entities/refresh-token.entity";
 import { ENV_CONFIG } from "../src/config/env.config";
@@ -197,6 +199,8 @@ async function bootstrapTestApp(
 		controllers: [AuthController],
 		providers: [
 			AuthService,
+			JwtStrategy,
+			JwtAuthGuard,
 			{ provide: getRepositoryToken(UserEntity), useValue: userRepo },
 			{
 				provide: getRepositoryToken(RefreshTokenEntity),
@@ -325,10 +329,49 @@ describe("auth (e2e)", () => {
 	});
 
 	// (d) profile — guarded in Commit 5
-	it.skip("GET /api/v1/auth/profile: 401 without Authorization (handled by JwtAuthGuard in Commit 5)", async () => {
-		const res = await request(app.getHttpServer() as App).get(
-			"/api/v1/auth/profile",
-		);
-		expect(res.status).toBe(401);
+	describe("GET /api/v1/auth/profile (JwtAuthGuard, Commit 5)", () => {
+		it("401 without Authorization header", async () => {
+			const res = await request(app.getHttpServer() as App).get(
+				"/api/v1/auth/profile",
+			);
+			expect(res.status).toBe(401);
+		});
+
+		it("401 with expired bearer token", async () => {
+			// Sign a token that expired 1 minute ago with the SAME secret.
+			const expired = await new JwtService({
+				secret: "test-secret-32-chars-min-..................",
+				signOptions: { expiresIn: "-1m" },
+			}).signAsync({ sub: FIXED_USER_ID, email: TEST_EMAIL });
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/auth/profile")
+				.set("Authorization", `Bearer ${expired}`);
+			expect(res.status).toBe(401);
+		});
+
+		it("401 with a bearer token signed by a different secret (bad sig)", async () => {
+			const badSig = await new JwtService({
+				secret: "totally-different-secret-32-chars-min....",
+				signOptions: { expiresIn: "15m" },
+			}).signAsync({ sub: FIXED_USER_ID, email: TEST_EMAIL });
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/auth/profile")
+				.set("Authorization", `Bearer ${badSig}`);
+			expect(res.status).toBe(401);
+		});
+
+		it("200 with a valid bearer token, body { id, email }", async () => {
+			const valid = await new JwtService({
+				secret: "test-secret-32-chars-min-..................",
+				signOptions: { expiresIn: "15m" },
+			}).signAsync({ sub: FIXED_USER_ID, email: TEST_EMAIL });
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/auth/profile")
+				.set("Authorization", `Bearer ${valid}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { id: string; email: string };
+			expect(body.id).toBe(FIXED_USER_ID);
+			expect(body.email).toBe(TEST_EMAIL);
+		});
 	});
 });

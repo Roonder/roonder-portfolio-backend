@@ -6,10 +6,12 @@ import {
 	Post,
 	Req,
 	Res,
+	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { LoginDto } from "./dto/login.dto";
 
 // `req.user` is populated by `passport` after `JwtStrategy.validate()`
@@ -95,6 +97,7 @@ export class AuthController {
 	}
 
 	@ApiBearerAuth()
+	@UseGuards(JwtAuthGuard)
 	@Get("profile")
 	getProfile(@Req() req: AuthenticatedRequest): {
 		id: string;

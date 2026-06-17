@@ -139,4 +139,19 @@ describe("AppModule", () => {
 		expect(source).toMatch(/TypeOrmModule\.forRootAsync/);
 		expect(source).toMatch(/AppDataSource\.options/);
 	});
+
+	it("AppModule does NOT register JwtAuthGuard as a global APP_GUARD (per-controller only)", () => {
+		// Per design ADR-6 and spec §Requirement: JwtAuthGuard, the guard
+		// MUST be applied per-controller with `@UseGuards(JwtAuthGuard)`
+		// on `AuthController` only — NOT as a global `APP_GUARD` provider
+		// in `AppModule`. A global guard would force every future
+		// public endpoint (e.g. `GET /projects`) to opt out explicitly.
+		// This static assertion is the guard rail: any future change
+		// that adds a global JwtAuthGuard will trip it.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).not.toMatch(/APP_GUARD[\s\S]*JwtAuthGuard/);
+	});
 });

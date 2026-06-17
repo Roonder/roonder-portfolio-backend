@@ -23,6 +23,8 @@ import request from "supertest";
 import type { App } from "supertest/types";
 import { AuthController } from "./auth.controller";
 import { AuthService } from "./auth.service";
+import { JwtAuthGuard } from "./guards/jwt-auth.guard";
+import { JwtStrategy } from "./strategies/jwt.strategy";
 import { UserEntity } from "./entities/user.entity";
 import { RefreshTokenEntity } from "./entities/refresh-token.entity";
 import { ENV_CONFIG } from "../config/env.config";
@@ -187,6 +189,8 @@ async function bootstrapTestApp(
 		controllers: [AuthController],
 		providers: [
 			AuthService,
+			JwtStrategy,
+			JwtAuthGuard,
 			{ provide: getRepositoryToken(UserEntity), useValue: userRepo },
 			{
 				provide: getRepositoryToken(RefreshTokenEntity),
