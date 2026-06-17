@@ -11,6 +11,23 @@ process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
 
+// Mock @nestjs/typeorm so the e2e suite never opens a real DB connection.
+// The real TypeOrmCoreModule would call dataSource.initialize() at module
+// compile time; the e2e suite has no live Postgres. The TypeOrmModule
+// wiring itself is verified statically in src/app.module.spec.ts.
+jest.mock("@nestjs/typeorm", () => {
+	const actual: Record<string, unknown> =
+		jest.requireActual("@nestjs/typeorm");
+	return {
+		...actual,
+		TypeOrmModule: {
+			forRoot: () => ({ module: class NoopRootModule {} }),
+			forRootAsync: () => ({ module: class NoopRootAsyncModule {} }),
+			forFeature: () => ({ module: class NoopFeatureModule {} }),
+		},
+	};
+});
+
 import "reflect-metadata";
 import {
 	Body,
@@ -26,7 +43,10 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
-import { AppModule } from "../src/app.module";
+import { AuthModule } from "../src/auth/auth.module";
+import { ProjectsModule } from "../src/projects/projects.module";
+import { ReviewsModule } from "../src/reviews/reviews.module";
+import { ContactModule } from "../src/contact/contact.module";
 import { ENV_CONFIG, EnvConfig } from "../src/config/env.config";
 
 // ---------------------------------------------------------------------------
@@ -58,7 +78,18 @@ class FixtureModule {}
 // still attach supertest to app.getHttpServer() without calling listen().
 async function bootstrapTestApp(): Promise<INestApplication> {
 	const moduleRef: TestingModule = await Test.createTestingModule({
-		imports: [AppModule],
+		imports: [
+			ConfigModule.forRoot({
+				isGlobal: true,
+				validationSchema: ENV_CONFIG,
+				ignoreEnvFile: true,
+				cache: true,
+			}),
+			AuthModule,
+			ProjectsModule,
+			ReviewsModule,
+			ContactModule,
+		],
 	}).compile();
 	const app = moduleRef.createNestApplication({ logger: false });
 	app.setGlobalPrefix("api/v1");

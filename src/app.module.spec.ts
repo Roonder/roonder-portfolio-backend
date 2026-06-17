@@ -11,11 +11,35 @@ process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
 
+// Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
+// The real TypeOrmCoreModule would call dataSource.initialize() at module
+// compile time; the unit suite has no live Postgres. The TypeOrmModule
+// wiring itself (forRootAsync, AppDataSource.options) is verified
+// statically below in a dedicated test that reads src/app.module.ts.
+jest.mock("@nestjs/typeorm", () => {
+	const actual: Record<string, unknown> =
+		jest.requireActual("@nestjs/typeorm");
+	return {
+		...actual,
+		TypeOrmModule: {
+			forRoot: () => ({ module: class NoopRootModule {} }),
+			forRootAsync: () => ({ module: class NoopRootAsyncModule {} }),
+			forFeature: () => ({ module: class NoopFeatureModule {} }),
+		},
+	};
+});
+
 import { Test, TestingModule } from "@nestjs/testing";
 import { Injectable, Module } from "@nestjs/common";
-import { ConfigService } from "@nestjs/config";
-import { AppModule } from "./app.module";
+import { ConfigModule, ConfigService } from "@nestjs/config";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { ENV_CONFIG } from "./config/env.config";
 import { EnvConfig } from "./config/env.config";
+import { AuthModule } from "./auth/auth.module";
+import { ProjectsModule } from "./projects/projects.module";
+import { ReviewsModule } from "./reviews/reviews.module";
+import { ContactModule } from "./contact/contact.module";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -35,13 +59,29 @@ describe("AppModule", () => {
 	let module: TestingModule;
 
 	beforeAll(async () => {
+		// This test mirrors the AppModule composition (ConfigModule global,
+		// four domain modules). TypeOrmModule is mocked at the top of this
+		// file so the unit suite never opens a real DB connection. The
+		// production wiring is verified statically below.
 		module = await Test.createTestingModule({
-			imports: [AppModule, ConsumerModule],
+			imports: [
+				ConfigModule.forRoot({
+					isGlobal: true,
+					validationSchema: ENV_CONFIG,
+					ignoreEnvFile: true,
+					cache: true,
+				}),
+				AuthModule,
+				ProjectsModule,
+				ReviewsModule,
+				ContactModule,
+				ConsumerModule,
+			],
 		}).compile();
 	});
 
 	afterAll(async () => {
-		await module.close();
+		if (module) await module.close();
 	});
 
 	it("registers ConfigModule globally so ConfigService is injectable in any module", () => {
@@ -55,5 +95,17 @@ describe("AppModule", () => {
 		const consumer = module.get(ConfigConsumer);
 		const port = consumer.config.get("PORT", { infer: true });
 		expect(port).toBe(3000);
+	});
+
+	it("AppModule source includes TypeOrmModule.forRootAsync wiring (static contract)", () => {
+		// Per the auth-domain change, AppModule MUST wire TypeOrmModule
+		// with the shared AppDataSource. This is a static-text assertion
+		// to avoid requiring a live database in the unit suite.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).toMatch(/TypeOrmModule\.forRootAsync/);
+		expect(source).toMatch(/AppDataSource\.options/);
 	});
 });

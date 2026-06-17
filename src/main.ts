@@ -6,8 +6,14 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "./app.module";
 import { EnvConfig } from "./config/env.config";
 
-export async function bootstrap(): Promise<INestApplication> {
-	const app = await NestFactory.create(AppModule);
+/**
+ * Apply the cross-cutting HTTP setup (global prefix, validation pipe,
+ * CORS, Swagger) to a Nest application. Extracted from `bootstrap()` so
+ * tests can build a parallel application with a different module list
+ * (e.g. one that does NOT include the TypeOrmModule data source — see
+ * `src/main.spec.ts`'s `bootstrapTestApp`).
+ */
+export function configureApp(app: INestApplication): void {
 	app.setGlobalPrefix("api/v1");
 	app.useGlobalPipes(
 		new ValidationPipe({
@@ -52,9 +58,16 @@ export async function bootstrap(): Promise<INestApplication> {
 		.build();
 	const document = SwaggerModule.createDocument(app, swaggerConfig);
 	SwaggerModule.setup("docs", app, document, { useGlobalPrefix: true });
+}
+
+export async function bootstrap(): Promise<INestApplication> {
+	const app = await NestFactory.create(AppModule);
+	configureApp(app);
 	// PORT is required by ENV_CONFIG (Joi.number().required()), so it
 	// is present at runtime even though TypeScript's typing allows undefined.
-	const port = configService.get("PORT", { infer: true }) as number;
+	const port = app.get(ConfigService<EnvConfig>).get("PORT", {
+		infer: true,
+	}) as number;
 	await app.listen(port);
 	return app;
 }

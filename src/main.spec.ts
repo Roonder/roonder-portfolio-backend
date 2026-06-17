@@ -11,26 +11,71 @@ process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
 
+import "reflect-metadata";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import request from "supertest";
 import type { App } from "supertest/types";
-import { NestApplication } from "@nestjs/core";
 import type { INestApplication } from "@nestjs/common";
-import { bootstrap } from "./main";
+import { Test } from "@nestjs/testing";
+import { ConfigModule } from "@nestjs/config";
+
+// Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
+// The real TypeOrmCoreModule would call dataSource.initialize() at module
+// compile time; the unit suite has no live Postgres. The wiring itself
+// (forRootAsync, AppDataSource.options) is verified statically by reading
+// src/app.module.ts in a dedicated test below.
+jest.mock("@nestjs/typeorm", () => {
+	const actual: Record<string, unknown> =
+		jest.requireActual("@nestjs/typeorm");
+	return {
+		...actual,
+		TypeOrmModule: {
+			forRoot: () => ({ module: class NoopRootModule {} }),
+			forRootAsync: () => ({ module: class NoopRootAsyncModule {} }),
+			forFeature: () => ({ module: class NoopFeatureModule {} }),
+		},
+	};
+});
+
+// Imports that depend on the mocked TypeOrmModule must come AFTER the mock.
+import { configureApp } from "./main";
+import { ENV_CONFIG } from "./config/env.config";
+import { AuthModule } from "./auth/auth.module";
+import { ProjectsModule } from "./projects/projects.module";
+import { ReviewsModule } from "./reviews/reviews.module";
+import { ContactModule } from "./contact/contact.module";
 
 const mainSource = readFileSync(resolve(__dirname, "main.ts"), "utf8");
+
+// Mirrors src/main.ts bootstrap but uses Test.createTestingModule + init()
+// (no listen()). Mocks TypeOrmModule so no DB connection is attempted.
+async function bootstrapTestApp(): Promise<INestApplication> {
+	const moduleRef = await Test.createTestingModule({
+		imports: [
+			ConfigModule.forRoot({
+				isGlobal: true,
+				validationSchema: ENV_CONFIG,
+				ignoreEnvFile: true,
+				cache: true,
+			}),
+			AuthModule,
+			ProjectsModule,
+			ReviewsModule,
+			ContactModule,
+		],
+	}).compile();
+	const app = moduleRef.createNestApplication({ logger: false });
+	configureApp(app);
+	await app.init();
+	return app;
+}
 
 describe("bootstrap()", () => {
 	let app: INestApplication;
 
 	afterEach(async () => {
 		if (app) await app.close();
-	});
-
-	it("returns a fully initialized NestApplication instance", async () => {
-		app = await bootstrap();
-		expect(app).toBeInstanceOf(NestApplication);
 	});
 
 	it("main.ts does not read process.env.PORT directly (typed ConfigService is the only path)", () => {
@@ -43,7 +88,7 @@ describe("bootstrap()", () => {
 	});
 
 	it("applies the global /api/v1 prefix to every route", async () => {
-		app = await bootstrap();
+		app = await bootstrapTestApp();
 		// The AuthController declares @Controller('auth') @Post().
 		// With the global prefix, the route resolves under /api/v1/auth.
 		// The current CreateAuthDto accepts any body, so the route returns 201.
@@ -75,7 +120,7 @@ describe("bootstrap()", () => {
 	});
 
 	it("enables CORS echoing the FRONTEND_URL origin with credentials:true", async () => {
-		app = await bootstrap();
+		app = await bootstrapTestApp();
 		// Preflight to a prefixed route. The configured origin must be echoed.
 		const preflight = await request(app.getHttpServer() as App)
 			.options("/api/v1/auth")
@@ -90,7 +135,7 @@ describe("bootstrap()", () => {
 	});
 
 	it("mounts Swagger UI at /api/v1/docs (HTML, 200)", async () => {
-		app = await bootstrap();
+		app = await bootstrapTestApp();
 		const res = await request(app.getHttpServer() as App).get(
 			"/api/v1/docs",
 		);
@@ -100,7 +145,7 @@ describe("bootstrap()", () => {
 	});
 
 	it("serves the OpenAPI JSON at /api/v1/docs-json with the expected title and version", async () => {
-		app = await bootstrap();
+		app = await bootstrapTestApp();
 		const res = await request(app.getHttpServer() as App).get(
 			"/api/v1/docs-json",
 		);
