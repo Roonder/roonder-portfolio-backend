@@ -39,11 +39,31 @@ Create a `.env` file at the project root. The server **refuses to boot** if any 
 PORT=3000
 DATABASE_URL=postgres://user:password@host:5432/db
 JWT_SECRET=replace-with-a-long-random-string
+JWT_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=replace-with-a-different-long-random-string
+JWT_REFRESH_EXPIRES_IN=2592000
+SUPERUSER_EMAIL=admin@example.com
+SUPERUSER_PASSWORD=replace-with-a-strong-password
 RESEND_API_KEY=re_xxx
 FRONTEND_URL=http://localhost:5173
 ```
 
+> `SUPERUSER_PASSWORD` MUST be at least 8 characters; `JWT_REFRESH_SECRET` MUST be at least 32 characters and MUST differ from `JWT_SECRET`. `JWT_REFRESH_EXPIRES_IN` is a positive integer of seconds (RFC 7231 delta-seconds — NOT an RFC 1123 date). `JWT_EXPIRES_IN` is a NestJS duration string (e.g. `"15m"`, `"1h"`).
+
 See `openspec/specs/server_specs.md` (section 4) for the source-of-truth list.
+
+### Bootstrap
+
+A single superuser row drives the admin surface. The seed CLI is idempotent — re-runs update the existing row (and re-hash the password) rather than creating a duplicate.
+
+```bash
+# Set SUPERUSER_EMAIL and SUPERUSER_PASSWORD in your environment, then:
+npm run seed:superuser
+```
+
+> **Warning:** `SUPERUSER_PASSWORD` is a **bootstrap secret**. Production deployments MUST rotate the password after the first successful login (a change-password endpoint is explicitly out of scope for the auth-domain change — tracked as a follow-up).
+
+> **Schema prerequisite:** the CLI does not run migrations. The first `typeorm migration:generate` is a follow-up change. Run your migration pipeline (or `psql` against `openspec/specs/database-schema.dbml`) before invoking the seed CLI, or `dataSource.initialize()` will throw.
 
 ### Run
 
@@ -63,20 +83,21 @@ The server listens on `PORT` (default `3000`).
 
 ## Scripts
 
-| Command               | What it does                                              |
-| --------------------- | --------------------------------------------------------- |
-| `npm run build`       | Compile TypeScript via `nest build`                       |
-| `npm run start`       | Start once (no watch)                                     |
-| `npm run start:dev`   | Start with watch + reload                                 |
-| `npm run start:debug` | Start with inspector + watch                              |
-| `npm run start:prod`  | Run compiled `dist/main`                                  |
-| `npm test`            | Run unit tests (`*.spec.ts` colocated in `src/`)          |
-| `npm run test:watch`  | Run unit tests in watch mode                              |
-| `npm run test:cov`    | Run unit tests with coverage report                       |
-| `npm run test:debug`  | Run unit tests with Node inspector                        |
-| `npm run test:e2e`    | Run E2E tests in `test/` via `jest-e2e.json`              |
-| `npm run lint`        | ESLint with auto-fix on `src/`, `apps/`, `libs/`, `test/` |
-| `npm run format`      | Prettier on `src/**/*.ts` and `test/**/*.ts`              |
+| Command                    | What it does                                              |
+| -------------------------- | --------------------------------------------------------- |
+| `npm run build`            | Compile TypeScript via `nest build`                       |
+| `npm run start`            | Start once (no watch)                                     |
+| `npm run start:dev`        | Start with watch + reload                                 |
+| `npm run start:debug`      | Start with inspector + watch                              |
+| `npm run start:prod`       | Run compiled `dist/main`                                  |
+| `npm test`                 | Run unit tests (`*.spec.ts` colocated in `src/`)          |
+| `npm run test:watch`       | Run unit tests in watch mode                              |
+| `npm run test:cov`         | Run unit tests with coverage report                       |
+| `npm run test:debug`       | Run unit tests with Node inspector                        |
+| `npm run test:e2e`         | Run E2E tests in `test/` via `jest-e2e.json`              |
+| `npm run seed:superuser`   | Upsert the superuser row from `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` (idempotent) |
+| `npm run lint`             | ESLint with auto-fix on `src/`, `apps/`, `libs/`, `test/` |
+| `npm run format`           | Prettier on `src/**/*.ts` and `test/**/*.ts`              |
 
 ## Project Structure
 
@@ -128,10 +149,12 @@ All HTTP routes are mounted under the global **`/api/v1`** prefix (see `src/main
 
 ### Auth
 
-| Method | Path                   | Auth   | Purpose                            |
-| ------ | ---------------------- | ------ | ---------------------------------- |
-| POST   | `/api/v1/auth/login`   | Public | Authenticate admin, return JWT     |
-| GET    | `/api/v1/auth/profile` | JWT    | Return authenticated admin profile |
+| Method | Path                   | Auth   | Purpose                                                                 |
+| ------ | ---------------------- | ------ | ----------------------------------------------------------------------- |
+| POST   | `/api/v1/auth/login`   | Public | Authenticate admin, return access token (body) + refresh token (`rt` HttpOnly cookie) |
+| POST   | `/api/v1/auth/refresh` | Public | Rotate the `rt` cookie; old refresh row is revoked, new one issued in the same family |
+| POST   | `/api/v1/auth/logout`  | Public | Revoke the presented `rt` row and clear the cookie                      |
+| GET    | `/api/v1/auth/profile` | JWT    | Return authenticated admin profile                                      |
 
 ### Projects
 

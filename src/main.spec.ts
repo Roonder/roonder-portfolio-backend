@@ -14,7 +14,8 @@ process.env.FRONTEND_URL = "https://app.example.com";
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { Global, Module } from "@nestjs/common";
+import { Body, Controller, Global, Module, Post } from "@nestjs/common";
+import { IsString } from "class-validator";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import request from "supertest";
 import type { App } from "supertest/types";
@@ -82,6 +83,31 @@ const fakeRefreshTokenRepo = {
 })
 class TestFakesModule {}
 
+// ---------------------------------------------------------------------------
+// ADR-8 synthetic fixture: mirrors test/bootstrap.e2e-spec.ts. The controller
+// path is `__bootstrap_fixture` so the prefixed route is
+// `/api/v1/__bootstrap_fixture`. This keeps the prefix reachability probe
+// decoupled from any domain DTO shape — the auth domain's own endpoints are
+// covered in test/auth.e2e-spec.ts.
+// ---------------------------------------------------------------------------
+class FixtureDto {
+	@IsString()
+	name!: string;
+}
+
+@Controller("__bootstrap_fixture")
+class FixtureController {
+	@Post()
+	post(@Body() dto: FixtureDto): FixtureDto {
+		return dto;
+	}
+}
+
+@Module({
+	controllers: [FixtureController],
+})
+class FixtureModule {}
+
 // Mirrors src/main.ts bootstrap but uses Test.createTestingModule + init()
 // (no listen()). Mocks TypeOrmModule so no DB connection is attempted; the
 // @InjectRepository() tokens are supplied by TestFakesModule which is
@@ -101,6 +127,7 @@ async function bootstrapTestApp(): Promise<INestApplication> {
 			ProjectsModule,
 			ReviewsModule,
 			ContactModule,
+			FixtureModule,
 		],
 	}).compile();
 	const app = moduleRef.createNestApplication({ logger: false });
@@ -127,18 +154,20 @@ describe("bootstrap()", () => {
 
 	it("applies the global /api/v1 prefix to every route", async () => {
 		app = await bootstrapTestApp();
-		// The AuthController declares @Controller('auth') @Post().
-		// With the global prefix, the route resolves under /api/v1/auth.
-		// The current CreateAuthDto accepts any body, so the route returns 201.
+		// Per design ADR-8: the prefix probe targets a test-only
+		// `__bootstrap_fixture` controller (mirrored from
+		// test/bootstrap.e2e-spec.ts) so the assertion is decoupled
+		// from any domain DTO shape. The auth domain's own endpoints
+		// are covered in test/auth.e2e-spec.ts.
 		const prefixed = await request(app.getHttpServer() as App)
-			.post("/api/v1/auth")
-			.send({})
+			.post("/api/v1/__bootstrap_fixture")
+			.send({ name: "x" })
 			.set("Content-Type", "application/json");
 		expect(prefixed.status).toBe(201);
 		// The unprefixed URL must 404.
 		const unprefixed = await request(app.getHttpServer() as App)
-			.post("/auth")
-			.send({})
+			.post("/__bootstrap_fixture")
+			.send({ name: "x" })
 			.set("Content-Type", "application/json");
 		expect(unprefixed.status).toBe(404);
 	});
@@ -161,7 +190,7 @@ describe("bootstrap()", () => {
 		app = await bootstrapTestApp();
 		// Preflight to a prefixed route. The configured origin must be echoed.
 		const preflight = await request(app.getHttpServer() as App)
-			.options("/api/v1/auth")
+			.options("/api/v1/__bootstrap_fixture")
 			.set("Origin", "https://app.example.com")
 			.set("Access-Control-Request-Method", "POST");
 		expect(preflight.headers["access-control-allow-origin"]).toBe(

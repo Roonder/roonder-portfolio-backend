@@ -121,6 +121,7 @@ async function bootstrapTestApp(): Promise<INestApplication> {
 			ProjectsModule,
 			ReviewsModule,
 			ContactModule,
+			FixtureModule,
 		],
 	}).compile();
 	const app = moduleRef.createNestApplication({ logger: false });
@@ -172,18 +173,23 @@ describe("bootstrap (e2e)", () => {
 
 	// (a) prefix reachability
 	describe("global /api/v1 prefix", () => {
-		it("reaches POST /api/v1/auth (prefixed) and returns 201", async () => {
+		it("reaches POST /api/v1/__bootstrap_fixture (prefixed) and returns 201", async () => {
+			// Per design ADR-8: the prefix probe targets the test-only
+			// `__bootstrap_fixture` controller (declared in this file,
+			// registered via FixtureModule) so the assertion is decoupled
+			// from any domain DTO shape. The auth domain's own endpoints
+			// are covered in test/auth.e2e-spec.ts.
 			const res = await request(app.getHttpServer() as App)
-				.post("/api/v1/auth")
-				.send({})
+				.post("/api/v1/__bootstrap_fixture")
+				.send({ name: "x" })
 				.set("Content-Type", "application/json");
 			expect(res.status).toBe(201);
 		});
 
-		it("rejects POST /auth (unprefixed) with 404", async () => {
+		it("rejects POST /__bootstrap_fixture (unprefixed) with 404", async () => {
 			const res = await request(app.getHttpServer() as App)
-				.post("/auth")
-				.send({})
+				.post("/__bootstrap_fixture")
+				.send({ name: "x" })
 				.set("Content-Type", "application/json");
 			expect(res.status).toBe(404);
 		});
@@ -236,7 +242,7 @@ describe("bootstrap (e2e)", () => {
 	describe("CORS preflight echoes FRONTEND_URL", () => {
 		it("OPTIONS from the configured origin includes Access-Control-Allow-Origin + Allow-Credentials", async () => {
 			const res = await request(app.getHttpServer() as App)
-				.options("/api/v1/auth/login")
+				.options("/api/v1/__bootstrap_fixture")
 				.set("Origin", "https://app.example.com")
 				.set("Access-Control-Request-Method", "POST");
 			expect(res.headers["access-control-allow-origin"]).toBe(
@@ -252,7 +258,7 @@ describe("bootstrap (e2e)", () => {
 	describe("CORS preflight does not echo a mismatched origin", () => {
 		it("OPTIONS from a different origin to an unprefixed URL does NOT carry the configured origin", async () => {
 			const res = await request(app.getHttpServer() as App)
-				.options("/auth/login")
+				.options("/__bootstrap_fixture")
 				.set("Origin", "https://evil.example.com")
 				.set("Access-Control-Request-Method", "POST");
 			// Per ADR-5: assert on the header, not the status code.
