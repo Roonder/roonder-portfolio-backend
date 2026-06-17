@@ -3,18 +3,24 @@ import { NestFactory } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { EnvConfig } from "./config/env.config";
 
 /**
  * Apply the cross-cutting HTTP setup (global prefix, validation pipe,
- * CORS, Swagger) to a Nest application. Extracted from `bootstrap()` so
- * tests can build a parallel application with a different module list
- * (e.g. one that does NOT include the TypeOrmModule data source — see
- * `src/main.spec.ts`'s `bootstrapTestApp`).
+ * CORS, Swagger, cookie-parser) to a Nest application. Extracted from
+ * `bootstrap()` so tests can build a parallel application with a
+ * different module list (e.g. one that does NOT include the
+ * TypeOrmModule data source — see `src/main.spec.ts`'s
+ * `bootstrapTestApp`).
  */
 export function configureApp(app: INestApplication): void {
 	app.setGlobalPrefix("api/v1");
+	// `cookieParser()` populates `req.cookies` so the auth controller
+	// can read the `rt` refresh token from the HttpOnly cookie. Without
+	// it `req.cookies` is `undefined` and refresh/logout always 401.
+	app.use(cookieParser());
 	app.useGlobalPipes(
 		new ValidationPipe({
 			whitelist: true,
