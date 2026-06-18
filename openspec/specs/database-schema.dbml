@@ -59,3 +59,19 @@ Table contacts {
   email_sent_log boolean [default: true, note: 'Verifica si Resend procesó el correo']
   created_at timestamp [default: `now()`]
 }
+
+Table refresh_tokens {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [ref: > users.id, not null]
+  family_id uuid [not null, note: 'Stable id for the login session lineage; same value across rotations, reused on theft-detect']
+  hashed_token varchar [unique, not null, note: 'sha-256 hex of the plaintext refresh token; raw token never persisted']
+  expires_at timestamp [not null]
+  revoked_at timestamp [note: 'Null while active; set on rotation, logout, or family-level reuse detection']
+  replaced_by uuid [ref: > refresh_tokens.id, note: 'Next row in the rotation chain; null on the active row']
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    family_id [name: 'idx_refresh_tokens_family_id']
+    user_id [name: 'idx_refresh_tokens_user_id']
+  }
+}
