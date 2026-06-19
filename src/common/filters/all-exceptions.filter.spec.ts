@@ -56,6 +56,117 @@ function makeHost(
 	} as unknown as ArgumentsHost;
 }
 
+describe("AllExceptionsFilter — raw Error path + prod/dev branch", () => {
+	let reply: jest.Mock;
+	let host: HttpAdapterHost;
+	let config: ConfigService;
+	let filter: AllExceptionsFilter;
+	let errorSpy: jest.SpyInstance;
+
+	beforeEach(() => {
+		errorSpy = jest
+			.spyOn(Logger.prototype, "error")
+			.mockImplementation(() => {});
+		jest.spyOn(Logger.prototype, "log").mockImplementation(() => {});
+		jest.spyOn(Logger.prototype, "warn").mockImplementation(() => {});
+	});
+
+	afterEach(() => {
+		jest.restoreAllMocks();
+	});
+
+	function buildFilter(nodeEnv: string | undefined): AllExceptionsFilter {
+		const env = makeAdapterHost();
+		reply = env.reply;
+		host = env.host;
+		const getMock: jest.Mock = jest.fn(() => nodeEnv);
+		config = { get: getMock } as unknown as ConfigService;
+		return new AllExceptionsFilter(host, config);
+	}
+
+	it("raw Error in production is sanitized to 500 with a generic message; no internal strings leak", () => {
+		filter = buildFilter("production");
+		const exception = new Error(
+			"postgres ECONNREFUSED on host 10.0.0.5:5432",
+		);
+		filter.catch(
+			exception,
+			makeHost({
+				originalUrl: "/api/v1/projects",
+				method: "POST",
+				id: "req-abc",
+				user: { id: "user-1" },
+			}),
+		);
+		expect(reply).toHaveBeenCalledTimes(1);
+		const [, body, status] = reply.mock.calls[0] as [
+			unknown,
+			Record<string, unknown>,
+			number,
+		];
+		expect(status).toBe(500);
+		expect(body).toMatchObject({
+			statusCode: 500,
+			error: "Internal Server Error",
+			message: "Internal server error",
+			path: "/api/v1/projects",
+		});
+		// Sanitization: the body MUST NOT contain the original
+		// internal strings (host, port, lib name, error class).
+		const serialized = JSON.stringify(body);
+		expect(serialized).not.toMatch(/postgres/);
+		expect(serialized).not.toMatch(/ECONNREFUSED/);
+		expect(serialized).not.toMatch(/10\.0\.0\.5/);
+		// No `stack` field in the body — the spec is explicit about
+		// the canonical envelope having only the 5 fixed keys.
+		expect(Object.keys(body).sort()).toEqual(
+			["error", "message", "path", "statusCode", "timestamp"].sort(),
+		);
+		// 5xx → server-side log fired with the full diagnostic
+		// context (requestId, userId, method, path, stack).
+		expect(errorSpy).toHaveBeenCalledTimes(1);
+		const logArg = (errorSpy.mock.calls[0] as unknown[])[0] as Record<
+			string,
+			unknown
+		>;
+		expect(logArg.requestId).toBe("req-abc");
+		expect(logArg.userId).toBe("user-1");
+		expect(logArg.method).toBe("POST");
+		expect(logArg.path).toBe("/api/v1/projects");
+		expect(logArg.message).toMatch(/postgres ECONNREFUSED/);
+		expect(typeof logArg.stack).toBe("string");
+	});
+
+	it("raw Error in development surfaces the full Error.message in the body (no stack in the body)", () => {
+		filter = buildFilter("development");
+		const exception = new Error(
+			"postgres ECONNREFUSED on host 10.0.0.5:5432",
+		);
+		filter.catch(
+			exception,
+			makeHost({ originalUrl: "/api/v1/projects/1", method: "GET" }),
+		);
+		expect(reply).toHaveBeenCalledTimes(1);
+		const [, body, status] = reply.mock.calls[0] as [
+			unknown,
+			Record<string, unknown>,
+			number,
+		];
+		expect(status).toBe(500);
+		expect(body).toMatchObject({
+			statusCode: 500,
+			error: "Internal Server Error",
+			message: "postgres ECONNREFUSED on host 10.0.0.5:5432",
+			path: "/api/v1/projects/1",
+		});
+		// Canonical envelope — no `stack` field in the body even
+		// in dev (the spec locks the 5-key shape; only `message` flips).
+		expect(Object.keys(body).sort()).toEqual(
+			["error", "message", "path", "statusCode", "timestamp"].sort(),
+		);
+	});
+});
+
 describe("AllExceptionsFilter — HttpException path", () => {
 	let reply: jest.Mock;
 	let host: HttpAdapterHost;
