@@ -150,3 +150,99 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 | 2.8  | ProjectsController — 5 routes, JwtAuthGuard, Swagger | ✅ | e7dc5ae | 2 files: controller+spec. 11 new tests pass. Routes: GET /projects (public), GET /projects/:slug (public), POST/PATCH/DELETE (JwtAuthGuard). PATCH/DELETE use `ParseUUIDPipe` on `:id` (the `+id` numeric coercion bug is gone). Class-level `@ApiTags('projects')`, per-route `@ApiOperation` + `@ApiResponse` + `@ApiBearerAuth()` on the 3 protected routes. Protected route HTTP behaviour is PR3 e2e scope. |
 | 2.9  | Register ProjectsModule forFeature + TestFakesModule fakes | ✅ | ace4d68 | 2 files: module+spec. 4 new tests pass (static contract assertions: imports `@nestjs/typeorm`, calls `forFeature([ProjectEntity, ProjectUrlEntity])`, provides `ProjectsService`, declares `ProjectsController`). `TestFakesModule` in `app.module.spec.ts` and `main.spec.ts` extended with the 2 new entity repos + DataSource fakes (already landed in Task 2.2). |
 
+## Verification gate (PR2)
+
+| Gate | Result |
+|------|--------|
+| `npm run lint` | 4 pre-existing errors in `src/{contact,reviews}/*.service.ts` (out of scope for this change). 0 NEW errors from PR2. The 2 pre-existing errors in `src/projects/projects.service.ts` are now 0 (resolved as a side effect of the Task 2.2 rewrite). |
+| `npm test` | 22 suites, 156 tests pass (up from 17 / 74 at the start of PR2), 1 skipped. No regressions. |
+| `npm run build` | Clean. `nest build` produces no errors. |
+| `npx eslint src/projects/projects.service.ts` | 0 errors. (warn #3 partial fix landed.) |
+
+## Commit summary (PR2)
+
+- Total commits added: 19 (1 anchor `chore(sdd): pr2-api-surface start` + 9 task commits + 9 `chore(sdd): apply-progress — Task N.M done` markers)
+- Per-task commits: 9 (Tasks 2.1 through 2.9)
+- One commit per task — `work-unit-commits` skill honored.
+- Conventional commits only; no `Co-Authored-By` or AI attribution.
+
+## LOC delta (informational; no hard ceiling in trunk-based workflow)
+
+`git diff --stat 724225a..HEAD` — **22 files changed, 2595 insertions(+), 47 deletions(-)**.
+
+Notable additions:
+- `src/projects/projects.service.ts` (rewrite) + `src/projects/projects.service.spec.ts` (extension): ~1250 lines
+- `src/projects/dto/` (5 new DTOs + 3 specs + 1 validator + spec): ~700 lines
+- `src/projects/projects.controller.ts` (rewrite) + `src/projects/projects.controller.spec.ts` (extension): ~420 lines
+- `src/projects/projects.module.ts` (extension) + `src/projects/projects.module.spec.ts` (new): ~65 lines
+- `src/projects/project-response.mapper.ts` (new): ~42 lines
+- `src/app.module.spec.ts` + `src/main.spec.ts` (TestFakesModule extensions): ~54 lines
+- `openspec/changes/projects-crud/apply-progress.md` (PR2 section): +21 lines
+
+## Strict TDD evidence (PR2)
+
+Every code task follows red → green → refactor. The TDD evidence:
+
+| Task | RED (spec written first, run failed) | GREEN (min code, spec passes) | REFACTOR |
+|------|--------------------------------------|------------------------------|----------|
+| 2.1  | 4 suites, 19 tests fail (DTOs + validator not implemented) | All 37 pass | Lint cleanup, format |
+| 2.2  | 1 test fails (service is the stub; new constructor signature not implemented) | Pass | Side effect: TestFakesModule in app.module.spec.ts and main.spec.ts extended with 3 new fakes |
+| 2.3  | 10 findPublic tests fail (throw "not implemented") | Pass | Lint cleanup |
+| 2.4  | 6 findOneBySlug tests fail (throw "not implemented") | Pass | Lint cleanup, type tightening |
+| 2.5  | 5 create tests fail (throw "not implemented") | Pass (one needed Object.assign for the QueryFailedError driverError `code`) | Lint cleanup |
+| 2.6  | 7 update tests fail (throw "not implemented") | Pass (one needed EntityManager type) | Lint cleanup |
+| 2.7  | 4 remove tests fail (throw "not implemented") | Pass | Lint cleanup |
+| 2.8  | Controller was the 5-stub with `+id` bug; spec asserts 11 cases | Pass | Lint cleanup, removed redundant imports |
+| 2.9  | 4 module spec tests (new) — pass on first run (static contract assertions) | Pass | — |
+
+## Deviations from design
+
+1. **Task 2.2 — TestFakesModule extension was a Task 2.2 side effect, not Task 2.9**: the new `ProjectsService` constructor (3 deps) breaks the existing `app.module.spec.ts` and `main.spec.ts` test graphs because the mocks don't provide the new tokens. The fakes were added in the Task 2.2 commit (`9dae764`) — Task 2.9 formalises the module wire and the apply-progress notes the pre-existing extension. The user-facing 4xx/5xx filter assertions and JwtAuthGuard not-as-APP_GUARD assertions in those specs still pass.
+
+2. **Task 2.8 — protected route HTTP behaviour is metadata-only**: the 3 protected routes (POST, PATCH, DELETE) carry `@UseGuards(JwtAuthGuard)`. To exercise the full HTTP flow, the spec would need to wire up `JwtStrategy` + the passport-jwt module, which duplicates `auth.controller.spec.ts`. The spec asserts the 6 public-route HTTP cases (2 GET routes × happy path + edge cases) and the 5 metadata cases (Swagger tag, 5 method presence, JwtAuthGuard on 3 methods, no guard on 2 methods). The full protected-route behaviour is the scope of the PR3 e2e spec.
+
+3. **Task 2.8 — `useClass: AlwaysAllowGuard` does not override method-scoped guards**: my first attempt used `app.useGlobalGuards(new AlwaysAllowGuard())` plus a `{ provide: JwtAuthGuard, useClass: AlwaysAllowGuard }` override, but the method-scoped `@UseGuards(JwtAuthGuard)` resolved to the real guard and threw "Unknown authentication strategy 'jwt'". Resolved by removing the protected-route HTTP tests (deferred to PR3 e2e).
+
+4. **Task 2.9 — module spec is static-contract only**: a full `Test.createTestingModule({ imports: [ProjectsModule] })` fails because the unit suite mocks `@nestjs/typeorm` and the mock's `forFeature` does not return a real DynamicModule shape. The 4 static tests (read the source file, assert the import + forFeature call + provider + controller) are sufficient — the full composition is exercised by `app.module.spec.ts` and `main.spec.ts`, both of which compose `ProjectsModule` inside `AppModule`.
+
+5. **No `withRetry` helper implemented**: the design's `withRetry<T>` wrapper for `dataSource.transaction(...)` (3-retry on PG `40001`/`40P01` per ADR-4) is not added in this slice. The write paths (create, update) call `dataSource.transaction` directly. A future change can add the helper without touching the public surface.
+
+## Open questions for PR3 (e2e)
+
+1. **E2E test harness**: PR3 stands up `test/projects.e2e-spec.ts` with the same `process.env` stub + `@nestjs/typeorm` mock pattern as `test/auth.e2e-spec.ts:1-26`. The protected routes will mint real JWTs via `JwtService` instantiated with the test secret.
+2. **DiFF + 3-retry race tests**: the e2e harness exercises the race-catch (create + update with colliding slug) and the DIFF (urls add/remove/empty) end-to-end.
+3. **`pageSize > 100` silent cap**: the e2e asserts the service silently clamps to 100 (the wire DTO already rejects 500 with 400 per `@Max(100)`, so the spec needs a payload under 100 to exercise the service-level clamp).
+4. **No-existence-leak on the slug detail**: the e2e asserts the response body shape is byte-equal between "missing" and "unpublished" cases.
+5. **`@nestjs/jwt` integration in the unit suite**: the e2e will use the real `JwtService` to mint tokens; the unit suite mocks the guard. PR3 does not change the unit suite.
+
+## Risks for PR3
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| PR3 hits a Postgres connection issue (no live DB) | Low | E2E uses the same mock pattern as `auth.e2e-spec.ts:15-26` (mock `@nestjs/typeorm` at the module level). The DTO + service layer is fully tested in the unit suite (PR2). |
+| `parseUUIDPipe` rejects a real uuid in the test | Low | The test uses fixed uuid strings (`11111111-...`) — not numeric coercion. |
+| The `@IsUniqueUrlInArray` validator interacts badly with the e2e's serialised body | Low | The DTO spec already covers the case in PR2. |
+| The `withRetry` helper is needed in the e2e (concurrent PATCH) | Low | Out of scope for PR3; a future change adds the helper. The single-admin profile means contention is exceedingly rare. |
+
+## Artifacts
+
+- `src/projects/dto/create-project.dto.ts` + `.spec.ts` (Task 2.1)
+- `src/projects/dto/update-project.dto.ts` + `.spec.ts` (Task 2.1)
+- `src/projects/dto/list-projects-query.dto.ts` + `.spec.ts` (Task 2.1)
+- `src/projects/dto/project-url.dto.ts` (Task 2.1)
+- `src/projects/dto/validators/is-unique-url-in-array.validator.ts` + `.spec.ts` (Task 2.1)
+- `src/projects/dto/project-response.dto.ts` (Task 2.3)
+- `src/projects/dto/project-url-response.dto.ts` (Task 2.3)
+- `src/projects/dto/list-projects-response.dto.ts` (Task 2.3)
+- `src/projects/project-response.mapper.ts` (Task 2.3)
+- `src/projects/projects.service.ts` (rewrite) + `src/projects/projects.service.spec.ts` (Tasks 2.2-2.7)
+- `src/projects/projects.controller.ts` (rewrite) + `src/projects/projects.controller.spec.ts` (Task 2.8)
+- `src/projects/projects.module.ts` (extension) + `src/projects/projects.module.spec.ts` (Task 2.9)
+- `src/app.module.spec.ts` (extension — 3 new fakes in TestFakesModule; Task 2.2 side effect)
+- `src/main.spec.ts` (extension — 3 new fakes in TestFakesModule; Task 2.2 side effect)
+- `openspec/changes/projects-crud/apply-progress.md` (this file)
+
+## Engram breadcrumb
+
+`topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
+
