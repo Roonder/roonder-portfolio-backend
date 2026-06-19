@@ -11,6 +11,11 @@ export interface EnvConfig {
 	SUPERUSER_PASSWORD: string;
 	RESEND_API_KEY: string;
 	FRONTEND_URL: string;
+	// `NODE_ENV` is consumed by the global exception filter (Task 1.6/1.7)
+	// to choose the prod vs dev 5xx sanitization branch. Joi's `.default()`
+	// keeps the field present at runtime; the optional `?` in the
+	// interface reflects the fact that the env var is NOT required.
+	NODE_ENV?: string;
 }
 
 export const ENV_CONFIG = Joi.object<EnvConfig>({
@@ -33,4 +38,7 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	SUPERUSER_PASSWORD: Joi.string().min(8).required(),
 	FRONTEND_URL: Joi.string().required(),
 	RESEND_API_KEY: Joi.string().required(),
+	NODE_ENV: Joi.string()
+		.valid("development", "test", "production")
+		.default("development"),
 });
