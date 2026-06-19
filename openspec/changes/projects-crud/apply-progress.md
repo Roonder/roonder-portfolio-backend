@@ -140,7 +140,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 
 | Task | Title | Status | Commit | Note |
 |------|-------|--------|--------|------|
-| 2.1  | DTOs + `@IsUniqueUrlInArray` validator | pending | — | — |
+| 2.1  | DTOs + `@IsUniqueUrlInArray` validator | ✅ | f97d9a6 | 9 files: 5 DTOs + 1 validator + 3 specs. 37 tests pass. Lint clean. Tags transform normalises (trim+lowercase+dedupe); `isPublished` query transform handles "true"/"false" string. |
 | 2.2  | ProjectsService skeleton (2 repos + DataSource) | pending | — | — |
 | 2.3  | findPublic(query) — envelope + filters + pagination | pending | — | — |
 | 2.4  | findOneBySlug(slug) — no-existence-leak 404 | pending | — | — |
