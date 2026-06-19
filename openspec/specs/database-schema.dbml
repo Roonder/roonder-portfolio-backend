@@ -16,15 +16,20 @@ Table projects {
   description text [not null]
   content text // Para descripciones extendidas (Markdown/HTML)
   cover_image varchar // URL de recurso visual
-  tags varchar[] // Array de strings (ej: ['React', 'NestJS'])
+  tags text[] // Array de strings (ej: ['React', 'NestJS'])
   is_published boolean [default: false]
   created_at timestamp [default: `now()`]
   updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (lower(slug)) [name: 'idx_projects_slug_lower']
+    (tags) [name: 'idx_projects_tags_gin', type: 'gin']
+  }
 }
 
 Table project_urls {
   id uuid [pk, default: `uuid_generate_v4()`]
-  project_id uuid [ref: > projects.id, not null]
+  project_id uuid [ref: > projects.id, not null, note: 'ON DELETE CASCADE']
   title varchar [not null]
   url varchar [not null]
   created_at timestamp [default: `now()`]
