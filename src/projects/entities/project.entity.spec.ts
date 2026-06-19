@@ -1,8 +1,6 @@
 import { getMetadataArgsStorage } from "typeorm";
 import { ProjectEntity } from "./project.entity";
-// The one-to-many relation to ProjectUrlEntity is covered in
-// `project-url.entity.spec.ts` (Task 1.2) — keeping this spec free of
-// the ProjectUrlEntity import so Task 1.1 stands on its own.
+import { ProjectUrlEntity } from "./project-url.entity";
 
 describe("ProjectEntity metadata", () => {
 	const metadata = getMetadataArgsStorage();
@@ -92,9 +90,6 @@ describe("ProjectEntity metadata", () => {
 		// The relation is declared on ProjectEntity and points at the
 		// `project_urls` table; the outbound one-to-many is asserted here
 		// and the inbound @ManyToOne is asserted in Task 1.2's spec.
-		// We use the string-based target form on the decorator (see
-		// project.entity.ts) so this spec is free of the ProjectUrlEntity
-		// import until Task 1.2 lands.
 		const relations = metadata.relations.filter(
 			(r) => r.target === ProjectEntity,
 		);
@@ -103,5 +98,26 @@ describe("ProjectEntity metadata", () => {
 			(r) => r.relationType === "one-to-many",
 		);
 		expect(oneToMany).toBeDefined();
+	});
+
+	it("one-to-many relation resolves to the ProjectUrlEntity class (thunk form, not string)", () => {
+		// Per ADR-1 (post-apply carryover), the OneToMany target must be a
+		// thunk `() => ProjectUrlEntity` so TypeORM does not depend on string
+		// resolution at decorator-evaluation time. We assert that
+		// `relation.type` is a function and, when called, returns
+		// `ProjectUrlEntity` (mirrors the pattern in
+		// `project-url.entity.spec.ts` for the @ManyToOne side).
+		const relations = metadata.relations.filter(
+			(r) => r.target === ProjectEntity,
+		);
+		const oneToMany = relations.find(
+			(r) => r.relationType === "one-to-many",
+		);
+		expect(oneToMany).toBeDefined();
+		const resolvedType =
+			typeof oneToMany?.type === "function"
+				? (oneToMany.type as () => typeof ProjectUrlEntity)()
+				: oneToMany?.type;
+		expect(resolvedType).toBe(ProjectUrlEntity);
 	});
 });

@@ -6,13 +6,18 @@ import {
 	PrimaryGeneratedColumn,
 	UpdateDateColumn,
 } from "typeorm";
+import { ProjectUrlEntity } from "./project-url.entity";
 
 /**
  * Project domain entity, mirroring the `projects` table in
  * `openspec/specs/database-schema.dbml`. The one-to-many relation to
- * `ProjectUrlEntity` uses a string-based target (`"ProjectUrlEntity"`)
- * to avoid a hard import on `project-url.entity.ts`; Task 1.2 fills
- * in the target class and the inbound `@ManyToOne` from ProjectUrlEntity.
+ * `ProjectUrlEntity` uses a thunk target (`() => ProjectUrlEntity`)
+ * so TypeORM resolves the relation at class-evaluation time and does
+ * not depend on string-based metadata lookup. The thunk form is
+ * safe under the circular import with `project-url.entity.ts`
+ * (which imports `ProjectEntity` for the inverse `@ManyToOne`):
+ * the arrow function is evaluated lazily, after both modules have
+ * finished loading.
  *
  * Per ADR-3, the `tags` column is a Postgres `text[]` (not `varchar[]`)
  * — the DBML delta is in `openspec/changes/projects-crud` and is
@@ -60,10 +65,10 @@ export class ProjectEntity {
 	@UpdateDateColumn({ name: "updated_at" })
 	updatedAt!: Date;
 
-	// `string` form for the target — TypeORM resolves it at runtime via
-	// the MetadataArgsStorage. The inverse-side property name is `project`
-	// (matches the `@ManyToOne(() => ProjectEntity, (p) => p.urls)` on
-	// ProjectUrlEntity).
-	@OneToMany("ProjectUrlEntity", "project")
-	urls!: unknown[];
+	// Thunk form for the target — TypeORM resolves the arrow function at
+	// class-evaluation time and stores the resulting class in the metadata
+	// storage. The inverse-side property name is `project` (matches the
+	// `@ManyToOne(() => ProjectEntity, (p) => p.urls)` on ProjectUrlEntity).
+	@OneToMany(() => ProjectUrlEntity, (u) => u.project)
+	urls!: ProjectUrlEntity[];
 }
