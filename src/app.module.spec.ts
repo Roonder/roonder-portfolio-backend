@@ -154,4 +154,25 @@ describe("AppModule", () => {
 		);
 		expect(source).not.toMatch(/APP_GUARD[\s\S]*JwtAuthGuard/);
 	});
+
+	it("AppModule does NOT register AllExceptionsFilter as an APP_FILTER (wired in main.ts only)", () => {
+		// Per design ADR-6 and spec §Requirement: Global Exception Filter
+		// Registration, the filter MUST be wired via
+		// `app.useGlobalFilters(new AllExceptionsFilter(...))` in
+		// `main.ts` — NOT as an `APP_FILTER` provider in `AppModule`.
+		// Registering it in both places would double-register the
+		// filter and produce duplicate 4xx bodies. This static
+		// assertion is the guard rail: any future change that
+		// re-routes the filter registration into `AppModule.providers`
+		// will trip it.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).not.toMatch(/APP_FILTER[\s\S]*AllExceptionsFilter/);
+		// Belt-and-braces: assert `AllExceptionsFilter` is not even
+		// imported into `app.module.ts`. If a future change adds the
+		// import, that is the first step toward the forbidden wiring.
+		expect(source).not.toMatch(/AllExceptionsFilter/);
+	});
 });
