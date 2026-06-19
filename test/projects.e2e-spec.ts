@@ -1304,3 +1304,136 @@ describe("projects (e2e) — Task 3.4 admin CRUD (JWT)", () => {
 		expect(body.message).toBe("Project not found");
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Task 3.5 — Global filter e2e: 4xx envelope shape (no double-format), 5xx
+// dev-sanitized body, and the request-id path.
+//
+// The filter is wired in test/auth.e2e-spec.ts (Tasks 3.3, 3.4) and the
+// e2e suite. We re-confirm the canonical envelope here, plus a 500 from a
+// deliberately-throwing fake repo to exercise the raw-Error path.
+// ---------------------------------------------------------------------------
+
+describe("projects (e2e) — Task 3.5 global filter", () => {
+	let app: INestApplication;
+
+	beforeEach(async () => {
+		projectState.rows.length = 0;
+		projectUrlState.rows.length = 0;
+		app = await bootstrapTestApp();
+	});
+
+	afterEach(async () => {
+		// Restore the default findOne (in case a test overrode it).
+		projectState.repo["findOne"].mockImplementation(
+			projectState.rows.length === 0
+				? async () => null
+				: async (opts: { where: Record<string, unknown> }) => {
+						const matches = projectState.rows.filter((r) =>
+							Object.entries(opts.where).every(([k, v]) => {
+								if (
+									k === "isPublished" ||
+									k === "is_published"
+								) {
+									return (
+										(
+											r as unknown as Record<
+												string,
+												unknown
+											>
+										)["isPublished"] === v
+									);
+								}
+								return (
+									(r as unknown as Record<string, unknown>)[
+										k
+									] === v
+								);
+							}),
+						);
+						return matches[0] ?? null;
+					},
+		);
+		if (app) await app.close();
+	});
+
+	it("401 from JwtAuthGuard renders through the AllExceptionsFilter (canonical envelope, not Nest's plain-text 401)", async () => {
+		// Per spec scenario "401 from JwtAuthGuard renders through the
+		// filter (no body shape change)".
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.send({ title: "X", slug: "x", description: "x" })
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(401);
+		expect(res.headers["content-type"]).toMatch(/application\/json/);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+			timestamp: string;
+		};
+		expect(body.statusCode).toBe(401);
+		expect(body.error).toBe("Unauthorized");
+		expect(body.message).toBe("Unauthorized");
+		expect(body.path).toBe("/api/v1/projects");
+		expect(typeof body.timestamp).toBe("string");
+		// No double-format: there is no nested `error.message` from Nest.
+		expect((res.body as Record<string, unknown>)["error"]).toBe(
+			"Unauthorized",
+		);
+	});
+
+	it("404 from a non-existent route renders the canonical envelope (JSON, not HTML)", async () => {
+		// Per spec scenario "Filter handles 404 on unknown routes". A
+		// route that does not exist (e.g. /api/v1/__no_such_route__)
+		// triggers Nest's router to throw NotFoundException, which the
+		// filter renders with the canonical envelope.
+		const res = await request(app.getHttpServer() as App).get(
+			"/api/v1/__no_such_route__",
+		);
+		expect(res.status).toBe(404);
+		expect(res.headers["content-type"]).toMatch(/application\/json/);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+		};
+		expect(body.statusCode).toBe(404);
+		expect(body.error).toBe("Not Found");
+		expect(body.path).toBe("/api/v1/__no_such_route__");
+	});
+
+	it("500 from a deliberately-throwing service: NODE_ENV=test renders the full message (no stack in body)", async () => {
+		// Per spec scenario "Raw Error in development returns the full
+		// 500" (development + test behave the same — anything NOT
+		// production). The message is the raw Error.message, the body
+		// shape is the canonical envelope, and NO `stack` field is
+		// exposed in the response.
+		const secretMessage = "postgres ECONNREFUSED on host 10.0.0.5:5432";
+		// Override findOne to throw a raw Error so the filter's
+		// raw-Error branch (5xx) runs.
+		projectState.repo["findOne"].mockImplementationOnce(async () => {
+			throw new Error(secretMessage);
+		});
+		const res = await request(app.getHttpServer() as App).get(
+			"/api/v1/projects/anything",
+		);
+		expect(res.status).toBe(500);
+		expect(res.headers["content-type"]).toMatch(/application\/json/);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+		} & Record<string, unknown>;
+		expect(body.statusCode).toBe(500);
+		expect(body.error).toBe("Internal Server Error");
+		// The raw message IS included in dev/test mode.
+		expect(body.message).toBe(secretMessage);
+		expect(body.path).toBe("/api/v1/projects/anything");
+		// No `stack` field in the body — the spec scenario is explicit.
+		expect(body["stack"]).toBeUndefined();
+	});
+});
