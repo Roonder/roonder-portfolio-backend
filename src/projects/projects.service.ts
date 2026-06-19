@@ -19,6 +19,7 @@ import type { ListProjectsResult } from "./dto/list-projects-response.dto";
 import type { ProjectResponseDto } from "./dto/project-response.dto";
 import type { ProjectUrlDto } from "./dto/project-url.dto";
 import { toProjectResponse } from "./project-response.mapper";
+import { withRetry } from "../common/with-retry";
 
 /**
  * Projects domain service. The methods are filled in by Tasks 2.3
@@ -156,30 +157,32 @@ export class ProjectsService {
 			throw new ConflictException("Slug already in use");
 		}
 		try {
-			const saved = await this.dataSource.transaction(
-				async (manager): Promise<ProjectEntity> => {
-					const row = manager.create(ProjectEntity, {
-						title: dto.title,
-						slug: dto.slug,
-						description: dto.description,
-						content: dto.content ?? null,
-						coverImage: dto.coverImage ?? null,
-						tags: dto.tags ?? [],
-						isPublished: dto.isPublished ?? false,
-					});
-					const persisted = await manager.save(row);
-					if (dto.urls && dto.urls.length > 0) {
-						await manager.insert(
-							ProjectUrlEntity,
-							dto.urls.map((u) => ({
-								projectId: persisted.id,
-								title: u.title,
-								url: u.url,
-							})),
-						);
-					}
-					return persisted;
-				},
+			const saved = await withRetry(() =>
+				this.dataSource.transaction(
+					async (manager): Promise<ProjectEntity> => {
+						const row = manager.create(ProjectEntity, {
+							title: dto.title,
+							slug: dto.slug,
+							description: dto.description,
+							content: dto.content ?? null,
+							coverImage: dto.coverImage ?? null,
+							tags: dto.tags ?? [],
+							isPublished: dto.isPublished ?? false,
+						});
+						const persisted = await manager.save(row);
+						if (dto.urls && dto.urls.length > 0) {
+							await manager.insert(
+								ProjectUrlEntity,
+								dto.urls.map((u) => ({
+									projectId: persisted.id,
+									title: u.title,
+									url: u.url,
+								})),
+							);
+						}
+						return persisted;
+					},
+				),
 			);
 			// Re-fetch with the urls relation so the response body
 			// matches `ProjectResponseDto.urls` shape.
@@ -226,11 +229,11 @@ export class ProjectsService {
 	 * also runs inside the same transaction so a concurrent create
 	 * on the same slug is covered by the 23505 race-catch.
 	 *
-	 * The transaction is `READ COMMITTED` (Postgres default; ADR-4).
-	 * 3-retry on `40001`/`40P01` is NOT implemented in this slice
-	 * — the `withRetry` helper is a no-op wrapper for now; a future
-	 * change can add the retry-on-deadlock loop without touching
-	 * the write paths.
+	 * The transaction is `READ COMMITTED` (Postgres default; ADR-4)
+	 * wrapped in `withRetry` (3 attempts on PG `40001`/`40P01`).
+	 * Single-admin contention is rare; the retry handles the
+	 * `serialization_failure` and `deadlock_detected` cases that
+	 * would otherwise surface as a 500 to the user.
 	 */
 	async update(
 		id: string,
@@ -244,53 +247,66 @@ export class ProjectsService {
 			throw new NotFoundException("Project not found");
 		}
 		try {
-			return await this.dataSource.transaction(
-				async (manager): Promise<ProjectResponseDto> => {
-					const row =
-						(await manager.findOne(ProjectEntity, {
-							where: { id },
-						})) ?? existing;
-					if (dto.slug && dto.slug !== row.slug) {
-						const collision = await manager.findOne(ProjectEntity, {
-							where: { slug: dto.slug },
-							select: { id: true },
-						});
-						if (collision && collision.id !== id) {
-							throw new ConflictException("Slug already in use");
+			return await withRetry(() =>
+				this.dataSource.transaction(
+					async (manager): Promise<ProjectResponseDto> => {
+						const row =
+							(await manager.findOne(ProjectEntity, {
+								where: { id },
+							})) ?? existing;
+						if (dto.slug && dto.slug !== row.slug) {
+							const collision = await manager.findOne(
+								ProjectEntity,
+								{
+									where: { slug: dto.slug },
+									select: { id: true },
+								},
+							);
+							if (collision && collision.id !== id) {
+								throw new ConflictException(
+									"Slug already in use",
+								);
+							}
+							row.slug = dto.slug;
 						}
-						row.slug = dto.slug;
-					}
-					if (dto.title !== undefined) row.title = dto.title;
-					if (dto.description !== undefined) {
-						row.description = dto.description;
-					}
-					if (dto.content !== undefined) row.content = dto.content;
-					if (dto.coverImage !== undefined) {
-						row.coverImage = dto.coverImage;
-					}
-					if (dto.tags !== undefined) row.tags = dto.tags;
-					if (dto.isPublished !== undefined) {
-						row.isPublished = dto.isPublished;
-					}
-					await manager.save(row);
-					// ADR-1: `'urls' in dto` distinguishes field-absent
-					// (no change) from empty-array (remove all). We
-					// operate on the dto's own properties, not the
-					// entity's `urls` field (the entity always has
-					// `urls: ProjectUrlEntity[]` regardless).
-					if (Object.prototype.hasOwnProperty.call(dto, "urls")) {
-						const desired = dto.urls ?? [];
-						await this.applyProjectUrlsDiff(id, desired, manager);
-					}
-					// Re-fetch with the relation so the response body
-					// matches the response DTO shape.
-					const refreshed =
-						(await manager.findOne(ProjectEntity, {
-							where: { id },
-							relations: { urls: true },
-						})) ?? row;
-					return toProjectResponse(refreshed);
-				},
+						if (dto.title !== undefined) row.title = dto.title;
+						if (dto.description !== undefined) {
+							row.description = dto.description;
+						}
+						if (dto.content !== undefined) {
+							row.content = dto.content;
+						}
+						if (dto.coverImage !== undefined) {
+							row.coverImage = dto.coverImage;
+						}
+						if (dto.tags !== undefined) row.tags = dto.tags;
+						if (dto.isPublished !== undefined) {
+							row.isPublished = dto.isPublished;
+						}
+						await manager.save(row);
+						// ADR-1: `'urls' in dto` distinguishes field-absent
+						// (no change) from empty-array (remove all). We
+						// operate on the dto's own properties, not the
+						// entity's `urls` field (the entity always has
+						// `urls: ProjectUrlEntity[]` regardless).
+						if (Object.prototype.hasOwnProperty.call(dto, "urls")) {
+							const desired = dto.urls ?? [];
+							await this.applyProjectUrlsDiff(
+								id,
+								desired,
+								manager,
+							);
+						}
+						// Re-fetch with the relation so the response body
+						// matches the response DTO shape.
+						const refreshed =
+							(await manager.findOne(ProjectEntity, {
+								where: { id },
+								relations: { urls: true },
+							})) ?? row;
+						return toProjectResponse(refreshed);
+					},
+				),
 			);
 		} catch (e) {
 			if (this.isSlugUniqueViolation(e)) {
