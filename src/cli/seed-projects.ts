@@ -142,7 +142,6 @@ export async function seedProjects(
 		});
 		if (seed.urls.length > 0) {
 			await deps.projectUrlRepo.insert(
-				ProjectUrlEntity,
 				seed.urls.map((u) => ({
 					projectId: saved.id,
 					title: u.title,

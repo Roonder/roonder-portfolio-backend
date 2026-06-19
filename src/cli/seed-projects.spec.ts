@@ -231,12 +231,12 @@ function makeFakeProjectUrlRepo(): {
 		insert: jest
 			.fn()
 			.mockImplementation(
-				(_entity: unknown, rows: Array<Record<string, unknown>>) => {
+				// `Repository<T>.insert(values)` takes a single arg
+				// (the values or array of values). Match the
+				// production call shape: 1 arg, the array of rows.
+				(rows: Array<Record<string, unknown>>) => {
 					insertCalls.push(rows);
-					return Promise.resolve({
-						identifiers: [],
-						generatedMaps: [],
-					});
+					return Promise.resolve({ identifiers: [], generatedMaps: [] });
 				},
 			),
 	};
