@@ -8,7 +8,7 @@ Scope: 2 entities (Project, ProjectUrl) + DataSource registration + DBML delta +
 |------|-------|--------|--------|------|
 | 1.1  | Project entity | ✅ | 80d11c6 | 10 columns + uuid pk + slug unique + isPublished default false + tags text[] + one-to-many (string target, resolved in 1.2) |
 | 1.2  | ProjectUrl entity | ✅ | 926e566 | 6 columns + project_id snake_case + @JoinColumn + @ManyToOne onDelete: CASCADE |
-| 1.3  | DataSource registration | pending | — | — |
+| 1.3  | DataSource registration | ✅ | c259ea2 | Added Project + ProjectUrl to entities array; added migrations glob |
 | 1.4  | DBML delta | pending | — | — |
 | 1.5  | TypeORM migration | pending | — | — |
 | 1.6  | AllExceptionsFilter HttpException path | pending | — | — |
