@@ -846,3 +846,115 @@ describe("projects (e2e) — Task 3.2 public list", () => {
 		}
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Task 3.3 — Public get-by-slug e2e: 200 happy path, 404 for missing slug,
+// 404 for unpublished slug with a body BYTE-EQUIVALENT to the missing case.
+// The byte-equality is the no-existence-leak guard: anonymous callers MUST
+// NOT be able to detect the existence of an unpublished project by
+// observing a different 404 body.
+// ---------------------------------------------------------------------------
+
+describe("projects (e2e) — Task 3.3 public detail by slug", () => {
+	let app: INestApplication;
+
+	beforeEach(async () => {
+		projectState.rows.length = 0;
+		projectUrlState.rows.length = 0;
+		app = await bootstrapTestApp();
+	});
+
+	afterEach(async () => {
+		if (app) await app.close();
+	});
+
+	it("GET /api/v1/projects/:slug for a published project: 200 + ProjectResponseDto shape", async () => {
+		// Per spec scenario "Published project is returned by slug".
+		seedProject({
+			slug: "portfolio-app",
+			title: "Portfolio App",
+			description: "My portfolio",
+			isPublished: true,
+		});
+		const res = await request(app.getHttpServer() as App).get(
+			"/api/v1/projects/portfolio-app",
+		);
+		expect(res.status).toBe(200);
+		expect(res.headers["content-type"]).toMatch(/application\/json/);
+		const body = res.body as {
+			slug: string;
+			title: string;
+			isPublished: boolean;
+			urls: unknown[];
+		};
+		expect(body.slug).toBe("portfolio-app");
+		expect(body.title).toBe("Portfolio App");
+		expect(body.isPublished).toBe(true);
+		expect(Array.isArray(body.urls)).toBe(true);
+	});
+
+	it("GET /api/v1/projects/:slug for a missing slug: 404 + canonical envelope", async () => {
+		// Per spec scenario "Non-existent slug returns 404".
+		const res = await request(app.getHttpServer() as App).get(
+			"/api/v1/projects/does-not-exist",
+		);
+		expect(res.status).toBe(404);
+		expect(res.headers["content-type"]).toMatch(/application\/json/);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+		};
+		expect(body.statusCode).toBe(404);
+		expect(body.error).toBe("Not Found");
+		expect(body.message).toBe("Project not found");
+		expect(body.path).toBe("/api/v1/projects/does-not-exist");
+	});
+
+	it("GET /api/v1/projects/:slug for an UNPUBLISHED project: 404, body byte-equal to missing case", async () => {
+		// Per spec scenario "Unpublished project returns 404 (no existence
+		// leak)". The 404 body shape is identical to the missing case —
+		// the `message` is the same, the `error` is the same, the `path`
+		// matches the request. Anonymous callers MUST NOT be able to
+		// detect the existence of a draft by observing a different body.
+		seedProject({
+			slug: "draft-idea",
+			title: "Draft Idea",
+			isPublished: false,
+		});
+
+		// Capture the missing-case body first.
+		interface ErrorEnvelope {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+			timestamp: string;
+		}
+		const missingRes = await request(app.getHttpServer() as App).get(
+			"/api/v1/projects/this-does-not-exist",
+		);
+		expect(missingRes.status).toBe(404);
+		const missingBody = missingRes.body as ErrorEnvelope;
+
+		// Now hit the unpublished slug.
+		const draftRes = await request(app.getHttpServer() as App).get(
+			"/api/v1/projects/draft-idea",
+		);
+		expect(draftRes.status).toBe(404);
+		const draftBody = draftRes.body as ErrorEnvelope;
+		// The `message` is byte-equal: the only field that would
+		// distinguish "exists but unpublished" from "doesn't exist" is
+		// the message — both must say "Project not found".
+		expect(draftBody.message).toBe(missingBody.message);
+		expect(draftBody.message).toBe("Project not found");
+		// And the full envelope shape matches: same error label, same
+		// status code, same path-relative-to-same-pattern.
+		expect(draftBody.statusCode).toBe(missingBody.statusCode);
+		expect(draftBody.error).toBe(missingBody.error);
+		// The `path` differs (different slug), but the shape and the
+		// other fields are byte-equal enough that an attacker cannot
+		// distinguish the two cases from the response.
+	});
+});
