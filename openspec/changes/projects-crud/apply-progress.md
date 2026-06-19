@@ -28,10 +28,31 @@ Scope: 2 entities (Project, ProjectUrl) + DataSource registration + DBML delta +
 
 ## Commit summary
 
-- Total commits added: 18 (1 anchor + 9 task commits + 8 apply-progress marker commits + 1 finalize)
+- Total commits added: 20 (1 anchor + 9 task commits + 9 apply-progress marker commits + 1 finalize)
 - Per-task commits: 9 (Tasks 1.1 through 1.9)
 - One commit per task — `work-unit-commits` skill honored.
 - Conventional commits only; no `Co-Authored-By` or AI attribution.
+
+## PR1 carryovers (post-finalize, 2026-06-19)
+
+User (2026-06-18) asked to address the sub-agent's PR1 apply warnings, EXCEPT:
+- Warn #1 (PR2 size ceiling) — deferred, addressed at PR2 apply start
+- Warn #2 (migration verify against live Postgres) — deferred until DB is initialized
+
+Actioned carryovers (2 commits, both append-only on `domain/projects`):
+
+| Warn | Commit | Title | TDD evidence |
+|------|--------|-------|--------------|
+| #4 | `3341483` | `refactor(projects): use thunk for OneToMany target` | Strengthened `project.entity.spec.ts` with a new assertion that the OneToMany relation resolves to the `ProjectUrlEntity` class via thunk. Red: assertion failed (received string `"ProjectUrlEntity"`). Green: converted decorator to `@OneToMany(() => ProjectUrlEntity, (u) => u.project)`, tightened type from `unknown[]` to `ProjectUrlEntity[]`. |
+| #5 | `6d198f2` | `test(app): assert AllExceptionsFilter is not registered as APP_FILTER` | Documentary test (no red-green, state was already correct). Two assertions: regex `APP_FILTER[\s\S]*AllExceptionsFilter` (forbidden wiring shape) + belt-and-braces `not.toMatch(/AllExceptionsFilter/)` (catches the first step toward the forbidden wiring). Mirrors the existing `APP_GUARD` / `JwtAuthGuard` assertion in the same file. |
+
+Re-verification after carryovers:
+
+| Gate | Result |
+|------|--------|
+| `npm run lint` | Same 6 pre-existing errors, **0 new** |
+| `npm test` | 17 suites, **74 tests** (up from 72 — 2 new from carryovers), 1 skipped — all pass |
+| `npm run build` | Clean |
 
 ## LOC delta (informational; no hard ceiling in trunk-based workflow)
 
