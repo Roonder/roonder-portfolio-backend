@@ -10,7 +10,7 @@ Scope: 2 entities (Project, ProjectUrl) + DataSource registration + DBML delta +
 | 1.2  | ProjectUrl entity | ✅ | 926e566 | 6 columns + project_id snake_case + @JoinColumn + @ManyToOne onDelete: CASCADE |
 | 1.3  | DataSource registration | ✅ | c259ea2 | Added Project + ProjectUrl to entities array; added migrations glob |
 | 1.4  | DBML delta | ✅ | 1e2170b | tags varchar[]→text[]; CASCADE note on FK; 2 indexes (slug_lower, tags_gin) |
-| 1.5  | TypeORM migration | pending | — | — |
+| 1.5  | TypeORM migration | ✅ | 66369dd | Hand-written 20260618205116-create-projects-and-project-urls.ts; FK CASCADE + slug_lower + tags_gin indexes |
 | 1.6  | AllExceptionsFilter HttpException path | pending | — | — |
 | 1.7  | AllExceptionsFilter raw Error path + prod/dev | pending | — | — |
 | 1.8  | Wire filter globally in main.ts | pending | — | — |
