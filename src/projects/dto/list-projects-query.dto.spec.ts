@@ -3,12 +3,16 @@ import { ListProjectsQueryDto } from "./list-projects-query.dto";
 
 function check(raw: Record<string, unknown>): ListProjectsQueryDto {
 	// Query params arrive as strings; the global ValidationPipe has
-	// `enableImplicitConversion: true`, so plainToInstance is enough
-	// to exercise the @Type(() => Number) / @Type(() => Boolean)
-	// conversions. We mirror the production path. This helper is
-	// intentionally synchronous — `plainToInstance` is sync; the
-	// describe block uses `it(..., () => { ... })` to call it.
-	return plainToInstance(ListProjectsQueryDto, raw);
+	// `transformOptions: { enableImplicitConversion: true }`, so we
+	// pass that option to plainToInstance to mirror the production
+	// path. Without it the @Transform sees the raw string "false"
+	// and converts it correctly — the test passes either way. With
+	// it, implicit conversion coerces "false" to Boolean("false")
+	// = true BEFORE @Transform runs, so the @Transform must use
+	// the `obj` parameter to recover the original.
+	return plainToInstance(ListProjectsQueryDto, raw, {
+		enableImplicitConversion: true,
+	});
 }
 
 describe("ListProjectsQueryDto transformations", () => {
@@ -52,6 +56,18 @@ describe("ListProjectsQueryDto transformations", () => {
 	});
 
 	it("coerces isPublished=false to a boolean", () => {
+		const out = check({ isPublished: "false" });
+		expect(out.isPublished).toBe(false);
+	});
+
+	// Regression: with `enableImplicitConversion: true` (the global
+	// ValidationPipe option in main.ts), the string "false" is first
+	// coerced to Boolean("false") === true BEFORE the @Transform
+	// runs. The DTO MUST recover the original via the `obj` argument
+	// so that "?isPublished=false" actually filters for unpublished
+	// projects. See test/projects.e2e-spec.ts for the end-to-end
+	// coverage of this case.
+	it("coerces isPublished=false to false even with enableImplicitConversion: true (regression for PR3 e2e)", () => {
 		const out = check({ isPublished: "false" });
 		expect(out.isPublished).toBe(false);
 	});

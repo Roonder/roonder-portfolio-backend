@@ -61,17 +61,34 @@ export class ListProjectsQueryDto {
 
 	@ApiPropertyOptional({ type: Boolean, default: true })
 	@IsOptional()
-	@Transform(({ value }: { value: unknown }) => {
-		// Query params arrive as strings. `Boolean("false")` is `true`
-		// (any non-empty string is truthy), so we cannot rely on the
-		// implicit conversion alone — we explicitly parse the
-		// "true"/"false" strings and any other truthy/falsy value.
-		if (typeof value === "boolean") return value;
-		if (typeof value === "string") {
-			if (value.toLowerCase() === "true") return true;
-			if (value.toLowerCase() === "false") return false;
+	@Transform(({ obj }: { value: unknown; obj: unknown }) => {
+		// The global ValidationPipe runs with `transformOptions:
+		// { enableImplicitConversion: true }`, which class-transformer
+		// applies BEFORE our @Transform. For a `boolean`-typed field,
+		// implicit conversion calls `Boolean(value)`. The string "false"
+		// becomes `true` (any non-empty string is truthy), so by the
+		// time this @Transform runs the original "true"/"false"
+		// distinction is lost — `value` is already the wrong boolean.
+		//
+		// We recover the original by reading `obj[key]`, which is the
+		// pre-transform source object passed by class-transformer.
+		const original = (obj as Record<string, unknown> | undefined)?.[
+			"isPublished"
+		];
+		if (typeof original === "string") {
+			const lower = original.toLowerCase();
+			if (lower === "true") return true;
+			if (lower === "false") return false;
+			// Any other non-empty string is ambiguous; fall through
+			// to the Boolean() coercion for backward compat.
+			if (original.length > 0) return Boolean(original);
+			return false;
 		}
-		return Boolean(value);
+		if (typeof original === "boolean") return original;
+		// Defensive: if the original is missing (e.g. the field was
+		// not sent), return undefined so the service can apply its
+		// default of `true`.
+		return undefined;
 	})
 	@IsBoolean()
 	isPublished?: boolean;
