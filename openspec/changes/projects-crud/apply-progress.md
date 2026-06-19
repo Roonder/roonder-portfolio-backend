@@ -146,7 +146,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 | 2.4  | findOneBySlug(slug) — no-existence-leak 404 | ✅ | 2a66273 | 2 files: service+spec. 6 new tests pass. Both "missing" and "unpublished" throw identical `NotFoundException("Project not found")` body — spec asserts byte-equal messages. `isPublished: true` is encoded in the `where` clause (one DB call, not two). |
 | 2.5  | create(dto) — slug pre-check + race catch | ✅ | 14ead6e | 2 files: service+spec. 5 new tests pass. Pre-check via `findOne({ where: { slug }, select: { id: true } })` BEFORE the transaction; race catch via `QueryFailedError.code === "23505" && /slug/.test(message)`. Both paths throw the same `ConflictException("Slug already in use")`. Non-23505 errors re-throw untouched. |
 | 2.6  | applyProjectUrlsDiff + update(id, dto) — DIFF + tx + 3-retry | ✅ | bb0a6e0 | 2 files: service+spec. 7 new tests pass. DIFF matches by `(title, LOWER(url))` pair per ADR-1. `urls` absent = no change; `urls: []` = remove all; `urls: [...]` = insert/delete diff inside `dataSource.transaction`. Slug uniqueness re-check + same 23505 race catch as create. |
-| 2.7  | remove(id) — cascade | pending | — | — |
+| 2.7  | remove(id) — cascade | ✅ | 098151b | 2 files: service+spec. 4 new tests pass. `this.projects.delete({ id })` + `affected === 0` → `NotFoundException("Project not found")` (same body as slug 404). Defensive against `affected: undefined`. Cascade to `project_urls` is at the DB layer via the FK `onDelete: 'CASCADE'` from Task 1.2. |
 | 2.8  | ProjectsController — 5 routes, JwtAuthGuard, Swagger | pending | — | — |
 | 2.9  | Register ProjectsModule forFeature + TestFakesModule fakes | pending | — | — |
 
