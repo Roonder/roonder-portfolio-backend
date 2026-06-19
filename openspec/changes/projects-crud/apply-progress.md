@@ -353,4 +353,15 @@ Every code task follows red → green → refactor. The TDD evidence:
 
 `topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
 
+## PR4 — readme + seeds (started 2026-06-19)
+Anchored by commit: `chore(sdd): pr4-readme start`
+Scope: `src/projects/README.md` (route table, canonical error envelope, DIFF semantics with concrete before/after examples, links to canonical specs) + optional dev seed script under `src/cli/seed-projects.ts` + `src/cli/seed-projects.spec.ts` (Task 4.2; included per the user's "acabemos con esto" signal — the project is meant to be developed against a seeded DB, so the value of a one-shot seed script outweighs the deferral risk).
+
+Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push. NO PR. Append-only commits. Per-PR LOC forecast (~20) is informational only — no hard ceiling; both tasks land.
+
+| Task | Title | Status | Commit | Note |
+|------|-------|--------|--------|------|
+| 4.1  | `src/projects/README.md` | pending | — | — |
+| 4.2  | Dev seed script | pending | — | — |
+
 
