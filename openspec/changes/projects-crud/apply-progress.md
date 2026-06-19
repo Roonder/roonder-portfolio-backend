@@ -277,7 +277,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 |------|-------|--------|--------|------|
 | 3.1  | E2E harness: TestFakesModule + supertest app bootstrap | ✅ | bde28dc | 2 files: new `test/projects.e2e-spec.ts` (656 lines — TestFakesModule + 7 fake factory fns + bootstrap + 1 smoke test) + bootstrap.e2e-spec.ts extension (26 lines — added ProjectEntity + ProjectUrlEntity + DataSource fakes). Smoke test green. Pre-existing PR2 carryover (bootstrap.e2e-spec.ts compile failure) fixed as a side effect. |
 | 3.2  | Public list e2e (envelope + filters + pagination) | ✅ | 87dad9e | 6 new e2e cases (default excludes unpublished, tags AND filter, page=2&pageSize=1, pageSize=200 400 from DTO @Max, pageSize=100 accepted, isPublished=false override) + DTO bugfix (`list-projects-query.dto.ts` @Transform now uses `obj` to recover the original string before `enableImplicitConversion: true` coerces "false" to true) + unit regression test. |
-| 3.3  | Public get-by-slug e2e (404 indistinguible) | pending | — | — |
+| 3.3  | Public get-by-slug e2e (404 indistinguible) | ✅ | 860a70b | 3 cases: published 200 + shape, missing 404 + canonical envelope, unpublished 404 with `body.message` byte-equal to the missing case. The no-existence-leak guard is asserted at the field level (message, statusCode, error). |
 | 3.4  | Admin CRUD e2e (JWT 401, DIFF empty, duplicate rejected) | pending | — | — |
 | 3.5  | Global filter e2e (auth preservation + 5xx sanitize + request id) | pending | — | — |
 
