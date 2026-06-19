@@ -267,3 +267,17 @@ Every code task follows red → green → refactor. The TDD evidence:
 
 `topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
 
+## PR3 — e2e (started 2026-06-18)
+Anchored by commit: `chore(sdd): pr3-e2e start`
+Scope: e2e harness for projects + 4 e2e test groups (public list, public get-by-slug, admin CRUD with JWT, global filter behavior). The harness stubs `DATABASE_URL` (no live Postgres) and provides in-memory repo fakes for `ProjectEntity` + `ProjectUrlEntity` that exercise the real TypeORM repository surface (`findOne`, `find`, `save`, `insert`, `delete`, `createQueryBuilder` with `leftJoinAndSelect` + `where` + `andWhere` + `orderBy` + `skip` + `take` + `getManyAndCount`) so the service code paths run end-to-end.
+
+Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push. NO PR. Append-only commits. Per-PR LOC forecast (~150) is informational only — no hard ceiling; all 5 tasks land.
+
+| Task | Title | Status | Commit | Note |
+|------|-------|--------|--------|------|
+| 3.1  | E2E harness: TestFakesModule + supertest app bootstrap | pending | — | — |
+| 3.2  | Public list e2e (envelope + filters + pagination) | pending | — | — |
+| 3.3  | Public get-by-slug e2e (404 indistinguible) | pending | — | — |
+| 3.4  | Admin CRUD e2e (JWT 401, DIFF empty, duplicate rejected) | pending | — | — |
+| 3.5  | Global filter e2e (auth preservation + 5xx sanitize + request id) | pending | — | — |
+
