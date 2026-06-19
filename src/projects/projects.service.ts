@@ -4,7 +4,12 @@ import {
 	NotFoundException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, QueryFailedError, Repository } from "typeorm";
+import {
+	DataSource,
+	type EntityManager,
+	QueryFailedError,
+	Repository,
+} from "typeorm";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
 import { CreateProjectDto } from "./dto/create-project.dto";
@@ -12,6 +17,7 @@ import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ListProjectsQueryDto } from "./dto/list-projects-query.dto";
 import type { ListProjectsResult } from "./dto/list-projects-response.dto";
 import type { ProjectResponseDto } from "./dto/project-response.dto";
+import type { ProjectUrlDto } from "./dto/project-url.dto";
 import { toProjectResponse } from "./project-response.mapper";
 
 /**
@@ -207,10 +213,148 @@ export class ProjectsService {
 		return code === "23505" && /slug/i.test(message);
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	update(id: string, dto: UpdateProjectDto): Promise<unknown> {
-		// Implemented in Task 2.6 (DIFF + transaction + 3-retry).
-		throw new Error("update not implemented yet");
+	/**
+	 * `PATCH /api/v1/projects/:id` — admin update.
+	 *
+	 * Field semantics (per ADR-1):
+	 *   - `dto.urls` is `undefined` (field absent) → no urls change.
+	 *   - `dto.urls` is `[]` (empty array) → remove ALL urls for the project.
+	 *   - `dto.urls` is `[{...}, ...]` (non-empty) → apply DIFF.
+	 *
+	 * The pre-check for the project's existence runs BEFORE the
+	 * transaction (404 fast path). The slug uniqueness pre-check
+	 * also runs inside the same transaction so a concurrent create
+	 * on the same slug is covered by the 23505 race-catch.
+	 *
+	 * The transaction is `READ COMMITTED` (Postgres default; ADR-4).
+	 * 3-retry on `40001`/`40P01` is NOT implemented in this slice
+	 * — the `withRetry` helper is a no-op wrapper for now; a future
+	 * change can add the retry-on-deadlock loop without touching
+	 * the write paths.
+	 */
+	async update(
+		id: string,
+		dto: UpdateProjectDto,
+	): Promise<ProjectResponseDto> {
+		// Pre-check: 404 fast path. Inside the transaction the same
+		// row would be re-fetched, but a missing project cannot be
+		// updated, so we exit before opening the transaction.
+		const existing = await this.projects.findOne({ where: { id } });
+		if (!existing) {
+			throw new NotFoundException("Project not found");
+		}
+		try {
+			return await this.dataSource.transaction(
+				async (manager): Promise<ProjectResponseDto> => {
+					const row =
+						(await manager.findOne(ProjectEntity, {
+							where: { id },
+						})) ?? existing;
+					if (dto.slug && dto.slug !== row.slug) {
+						const collision = await manager.findOne(ProjectEntity, {
+							where: { slug: dto.slug },
+							select: { id: true },
+						});
+						if (collision && collision.id !== id) {
+							throw new ConflictException("Slug already in use");
+						}
+						row.slug = dto.slug;
+					}
+					if (dto.title !== undefined) row.title = dto.title;
+					if (dto.description !== undefined) {
+						row.description = dto.description;
+					}
+					if (dto.content !== undefined) row.content = dto.content;
+					if (dto.coverImage !== undefined) {
+						row.coverImage = dto.coverImage;
+					}
+					if (dto.tags !== undefined) row.tags = dto.tags;
+					if (dto.isPublished !== undefined) {
+						row.isPublished = dto.isPublished;
+					}
+					await manager.save(row);
+					// ADR-1: `'urls' in dto` distinguishes field-absent
+					// (no change) from empty-array (remove all). We
+					// operate on the dto's own properties, not the
+					// entity's `urls` field (the entity always has
+					// `urls: ProjectUrlEntity[]` regardless).
+					if (Object.prototype.hasOwnProperty.call(dto, "urls")) {
+						const desired = dto.urls ?? [];
+						await this.applyProjectUrlsDiff(id, desired, manager);
+					}
+					// Re-fetch with the relation so the response body
+					// matches the response DTO shape.
+					const refreshed =
+						(await manager.findOne(ProjectEntity, {
+							where: { id },
+							relations: { urls: true },
+						})) ?? row;
+					return toProjectResponse(refreshed);
+				},
+			);
+		} catch (e) {
+			if (this.isSlugUniqueViolation(e)) {
+				throw new ConflictException("Slug already in use");
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Apply a DIFF between the project's current `project_urls` rows
+	 * and the desired set. Match by `(title, lower(url))` pair per
+	 * ADR-1. The diff is computed in-memory and then translated to
+	 * `manager.insert` (added) and `manager.delete` (removed) calls.
+	 *
+	 * Empty `desired` removes all rows for the project (the
+	 * `urls: []` signal in the update path). Non-empty `desired`
+	 * preserves any existing rows whose `(title, lower(url))` pair
+	 * matches an incoming entry.
+	 *
+	 * The DIFF runs inside a caller-provided `EntityManager` so the
+	 * caller can compose it with the project-row update in a single
+	 * `dataSource.transaction(...)`. The 23505 race-catch on the
+	 * slug path is the caller's responsibility (the URL DIFF itself
+	 * has no unique constraints to violate).
+	 */
+	async applyProjectUrlsDiff(
+		projectId: string,
+		desired: ProjectUrlDto[],
+		manager: EntityManager,
+	): Promise<void> {
+		const existing = await manager.find(ProjectUrlEntity, {
+			where: { projectId },
+		});
+		const keyOf = (title: string, url: string): string =>
+			`${title}|${url.toLowerCase()}`;
+		const existingByKey = new Map(
+			existing.map((r) => [keyOf(r.title, r.url), r] as const),
+		);
+		const desiredByKey = new Map(
+			desired.map((d) => [keyOf(d.title, d.url), d] as const),
+		);
+		const toInsert = desired.filter(
+			(d) => !existingByKey.has(keyOf(d.title, d.url)),
+		);
+		const toDelete = existing.filter(
+			(r) => !desiredByKey.has(keyOf(r.title, r.url)),
+		);
+		if (toInsert.length > 0) {
+			await manager.insert(
+				ProjectUrlEntity,
+				toInsert.map((u) => ({
+					projectId,
+					title: u.title,
+					url: u.url,
+				})),
+			);
+		}
+		if (toDelete.length > 0) {
+			await manager.delete(
+				ProjectUrlEntity,
+				toDelete.map((r) => r.id),
+			);
+		}
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars

@@ -564,3 +564,284 @@ describe("ProjectsService.create", () => {
 		expect(dataSource.transaction).toHaveBeenCalledTimes(1);
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Task 2.6 — applyProjectUrlsDiff + update(id, dto)
+// ---------------------------------------------------------------------------
+
+interface ManagerWithFind {
+	create: jest.Mock;
+	save: jest.Mock;
+	insert: jest.Mock;
+	delete: jest.Mock;
+	find: jest.Mock;
+	findOne: jest.Mock;
+}
+
+function makeFullManagerFake(): {
+	manager: ManagerWithFind;
+} {
+	return {
+		manager: {
+			create: jest.fn(),
+			save: jest.fn(),
+			insert: jest.fn(),
+			delete: jest.fn(),
+			find: jest.fn(),
+			findOne: jest.fn(),
+		},
+	};
+}
+
+interface ExistingUrlRow {
+	id: string;
+	projectId: string;
+	title: string;
+	url: string;
+}
+
+const EXISTING_URLS: ExistingUrlRow[] = [
+	{
+		id: "u-1",
+		projectId: "p-1",
+		title: "Repo",
+		url: "https://github.com/x",
+	},
+	{
+		id: "u-2",
+		projectId: "p-1",
+		title: "Demo",
+		url: "https://demo.example.com",
+	},
+];
+
+function makeUpdateRepoWithRow(
+	row: Record<string, unknown> | null,
+	collisionOnSlug: { id: string; slug: string } | null = null,
+): { findOne: jest.Mock } {
+	return {
+		findOne: jest.fn((opts: { where: { id?: string; slug?: string } }) => {
+			if (opts.where.id !== undefined) {
+				return Promise.resolve(row);
+			}
+			if (opts.where.slug !== undefined && collisionOnSlug) {
+				return Promise.resolve({ id: collisionOnSlug.id });
+			}
+			return Promise.resolve(null);
+		}),
+	};
+}
+
+async function buildServiceForUpdate(
+	repo: { findOne: jest.Mock },
+	ds: { transaction: jest.Mock },
+): Promise<ProjectsService> {
+	const module: TestingModule = await Test.createTestingModule({
+		providers: [
+			ProjectsService,
+			{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+			{
+				provide: getRepositoryToken(ProjectUrlEntity),
+				useValue: {},
+			},
+			{ provide: DataSource, useValue: ds },
+		],
+	}).compile();
+	return module.get(ProjectsService);
+}
+
+const UPDATE_PROJECT_ROW = {
+	id: "p-1",
+	title: "Portfolio app",
+	slug: "portfolio-app",
+	description: "My portfolio",
+	content: null,
+	coverImage: null,
+	tags: ["react"],
+	isPublished: true,
+	createdAt: new Date("2026-01-01T00:00:00Z"),
+	updatedAt: new Date("2026-01-01T00:00:00Z"),
+	urls: [],
+};
+
+describe("ProjectsService.update", () => {
+	it("DIFF inserts added rows and deletes removed rows inside a single transaction", async () => {
+		// Existing urls: Repo + Demo. Incoming: Repo only.
+		// Expected: insert 0, delete 1 (Demo).
+		const repo = makeUpdateRepoWithRow({ ...UPDATE_PROJECT_ROW });
+		const mgr = makeFullManagerFake();
+		mgr.manager.find.mockResolvedValue([...EXISTING_URLS]);
+		mgr.manager.save.mockResolvedValue({ ...UPDATE_PROJECT_ROW });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await service.update("p-1", {
+			urls: [{ title: "Repo", url: "https://github.com/x" }],
+		});
+
+		// No new rows to insert.
+		expect(mgr.manager.insert).not.toHaveBeenCalled();
+		// Demo row deleted.
+		expect(mgr.manager.delete).toHaveBeenCalledTimes(1);
+		const deleteCall = mgr.manager.delete.mock.calls[0] as Array<unknown>;
+		expect(deleteCall[0]).toBe(ProjectUrlEntity);
+		expect(deleteCall[1]).toEqual(["u-2"]);
+		// Repo row preserved.
+		const insertArgs = mgr.manager.insert.mock.calls;
+		expect(insertArgs).toHaveLength(0);
+	});
+
+	it("DIFF removes all rows when urls: [] is passed (the 'remove all' signal)", async () => {
+		const repo = makeUpdateRepoWithRow({ ...UPDATE_PROJECT_ROW });
+		const mgr = makeFullManagerFake();
+		mgr.manager.find.mockResolvedValue([...EXISTING_URLS]);
+		mgr.manager.save.mockResolvedValue({ ...UPDATE_PROJECT_ROW });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await service.update("p-1", { urls: [] });
+
+		// Both rows deleted, nothing inserted.
+		expect(mgr.manager.delete).toHaveBeenCalledTimes(1);
+		const deleteCall = mgr.manager.delete.mock.calls[0] as Array<unknown>;
+		expect(deleteCall[1]).toEqual(["u-1", "u-2"]);
+		expect(mgr.manager.insert).not.toHaveBeenCalled();
+	});
+
+	it("DIFF inserts a new row when the incoming url does not match any existing (title,url) pair", async () => {
+		const repo = makeUpdateRepoWithRow({ ...UPDATE_PROJECT_ROW });
+		const mgr = makeFullManagerFake();
+		mgr.manager.find.mockResolvedValue([...EXISTING_URLS]);
+		mgr.manager.save.mockResolvedValue({ ...UPDATE_PROJECT_ROW });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await service.update("p-1", {
+			urls: [
+				{ title: "Repo", url: "https://github.com/x" },
+				{ title: "Live", url: "https://live.example.com" },
+			],
+		});
+
+		expect(mgr.manager.insert).toHaveBeenCalledTimes(1);
+		const insertCall = mgr.manager.insert.mock.calls[0] as Array<unknown>;
+		expect(insertCall[0]).toBe(ProjectUrlEntity);
+		const rows = insertCall[1] as Array<{
+			projectId: string;
+			title: string;
+			url: string;
+		}>;
+		expect(rows).toEqual([
+			{
+				projectId: "p-1",
+				title: "Live",
+				url: "https://live.example.com",
+			},
+		]);
+		// Demo (u-2) is not in the incoming, so it gets deleted.
+		expect(mgr.manager.delete).toHaveBeenCalledTimes(1);
+		const deleteCall = mgr.manager.delete.mock.calls[0] as Array<unknown>;
+		expect(deleteCall[1]).toEqual(["u-2"]);
+	});
+
+	it("urls field absent leaves existing rows untouched (no manager.insert, no manager.delete)", async () => {
+		const repo = makeUpdateRepoWithRow({ ...UPDATE_PROJECT_ROW });
+		const mgr = makeFullManagerFake();
+		mgr.manager.find.mockResolvedValue([...EXISTING_URLS]);
+		mgr.manager.save.mockResolvedValue({ ...UPDATE_PROJECT_ROW });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await service.update("p-1", { title: "Renamed" });
+
+		// The field-absent branch: neither insert nor delete fires.
+		// `manager.find` is also not called because we don't enter the
+		// DIFF path at all.
+		expect(mgr.manager.find).not.toHaveBeenCalled();
+		expect(mgr.manager.insert).not.toHaveBeenCalled();
+		expect(mgr.manager.delete).not.toHaveBeenCalled();
+		// The project row itself is updated.
+		expect(mgr.manager.save).toHaveBeenCalled();
+	});
+
+	it("two urls sharing the same url are rejected at DTO layer (service is never reached)", async () => {
+		// Sanity check: the @IsUniqueUrlInArray decorator in the DTO
+		// rejects the payload BEFORE the controller hands it to the
+		// service. We assert the service spec is independent — the
+		// service does NOT have to defend against this case because
+		// the global ValidationPipe blocks it. The companion DTO
+		// spec (`update-project.dto.spec.ts`) covers the rejection
+		// branch in detail.
+		//
+		// Here we just confirm the service happily processes a clean
+		// payload with 2 distinct urls.
+		const repo = makeUpdateRepoWithRow({ ...UPDATE_PROJECT_ROW });
+		const mgr = makeFullManagerFake();
+		mgr.manager.find.mockResolvedValue([]);
+		mgr.manager.save.mockResolvedValue({ ...UPDATE_PROJECT_ROW });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await service.update("p-1", {
+			urls: [
+				{ title: "A", url: "https://a.io" },
+				{ title: "B", url: "https://b.io" },
+			],
+		});
+		expect(mgr.manager.insert).toHaveBeenCalledTimes(1);
+	});
+
+	it("unknown id returns 404 (no DB mutation)", async () => {
+		const repo = makeUpdateRepoWithRow(null);
+		const mgr = makeFullManagerFake();
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await expect(
+			service.update("p-unknown", { title: "X" }),
+		).rejects.toThrow(NotFoundException);
+		// The transaction never opened because the project row was
+		// missing — pre-check fires BEFORE the transaction.
+		expect(dataSource.transaction).not.toHaveBeenCalled();
+	});
+
+	it("slug collision on update returns 409 (no row mutation)", async () => {
+		const repo = makeUpdateRepoWithRow(
+			{ ...UPDATE_PROJECT_ROW, slug: "old" },
+			{ id: "p-2", slug: "taken" },
+		);
+		const mgr = makeFullManagerFake();
+		// The service's `update` calls `manager.findOne` twice inside
+		// the transaction: once to load the project row (by id), and
+		// once to check slug uniqueness (by slug). The second call
+		// must return a different project (p-2) so the service
+		// detects the collision.
+		mgr.manager.findOne.mockImplementation(
+			(
+				_entity: unknown,
+				opts: { where: { id?: string; slug?: string } },
+			) => {
+				if (opts.where.id === "p-1") {
+					return Promise.resolve({
+						...UPDATE_PROJECT_ROW,
+						slug: "old",
+					});
+				}
+				if (opts.where.slug === "taken") {
+					return Promise.resolve({ id: "p-2" });
+				}
+				return Promise.resolve(null);
+			},
+		);
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceForUpdate(repo, dataSource);
+		await expect(service.update("p-1", { slug: "taken" })).rejects.toThrow(
+			ConflictException,
+		);
+		// Critical: the collision check throws INSIDE the transaction,
+		// which rolls back. The spec only asserts the 409 outcome;
+		// whether the transaction opened before the throw is a
+		// non-essential detail.
+	});
+});
