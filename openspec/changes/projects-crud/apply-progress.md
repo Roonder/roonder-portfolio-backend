@@ -54,6 +54,27 @@ Re-verification after carryovers:
 | `npm test` | 17 suites, **74 tests** (up from 72 — 2 new from carryovers), 1 skipped — all pass |
 | `npm run build` | Clean |
 
+## PR2 carryover (post-finalize, 2026-06-19) — withRetry<T> helper
+
+User (2026-06-19) asked to address the sdd-apply sub-agent's PR2 carryover: the `withRetry<T>` helper for ADR-4 (3-retry on Postgres `40001`/`40P01`) was not implemented. Sub-agent had called `dataSource.transaction` directly without the wrapper.
+
+Actioned (2 atomic commits, append-only on `domain/projects`):
+
+| Commit | Title | What |
+|--------|-------|------|
+| `f718f67` | `feat(common): add withRetry helper for transient PG errors` | New file `src/common/with-retry.ts` + spec. Generic `withRetry<T>(fn, opts?)` that catches PG `40001` (serialization_failure) and `40P01` (deadlock_detected) and retries with linear backoff. Defaults: 3 attempts total, 50ms initial delay. Non-retryable errors throw immediately. |
+| `53c940b` | `refactor(projects): wrap create and update transactions in withRetry` | `ProjectsService.create` and `ProjectsService.update` now wrap their `dataSource.transaction(...)` calls in `withRetry`. Closes the spec's ADR-4 gap. Existing service spec (32 tests) still passes — withRetry is transparent on the success path. |
+
+Re-verification after the carryover:
+
+| Gate | Result |
+|------|--------|
+| `npm run lint` | **0 new errors** in touched files (`with-retry.ts`, `with-retry.spec.ts`, `projects.service.ts`); pre-existing 4 in `contact/reviews` services unchanged |
+| `npm test` | 23 suites, **162 tests pass** (up from 156 — 6 new from `with-retry.spec.ts`), 1 skipped — all pass |
+| `npm run build` | Clean |
+
+The 4 pre-existing lint errors in `src/{contact,reviews}/*.service.ts` remain. The 2 in `src/projects/projects.service.ts` resolved in Task 2.2 (PR2). All 4 are out of scope here and belong to their respective domain changes.
+
 ## LOC delta (informational; no hard ceiling in trunk-based workflow)
 
 `git diff --stat 85d3001..HEAD` — 15 files changed, 970 insertions(+), 11 deletions(-).
