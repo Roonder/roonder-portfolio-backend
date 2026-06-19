@@ -1,7 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
-import { DataSource } from "typeorm";
-import { NotFoundException } from "@nestjs/common";
+import { DataSource, QueryFailedError } from "typeorm";
+import { ConflictException, NotFoundException } from "@nestjs/common";
 import { ProjectsService } from "./projects.service";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
@@ -362,5 +362,205 @@ describe("ProjectsService.findPublic", () => {
 		expect(out.total).toBe(0);
 		expect(out.page).toBe(1);
 		expect(out.pageSize).toBe(20);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Task 2.5 — create(dto)
+// ---------------------------------------------------------------------------
+
+// Fake EntityManager. The create() path runs inside
+// `dataSource.transaction(async (manager) => ...)`. We need a manager
+// where `manager.create`, `manager.save`, and `manager.insert` are
+// captured jest mocks.
+function makeManagerFake(): {
+	manager: {
+		create: jest.Mock;
+		save: jest.Mock;
+		insert: jest.Mock;
+	};
+} {
+	return {
+		manager: {
+			create: jest.fn(),
+			save: jest.fn(),
+			insert: jest.fn(),
+		},
+	};
+}
+
+function makeDataSourceWithTransaction(
+	manager: { create: jest.Mock; save: jest.Mock; insert: jest.Mock },
+	opts: { throwError?: Error } = {},
+): { dataSource: { transaction: jest.Mock }; transactionCalls: number } {
+	const transactionCalls = { count: 0 };
+	const ds = {
+		transaction: jest.fn(
+			async (cb: (m: typeof manager) => Promise<unknown>) => {
+				transactionCalls.count++;
+				if (opts.throwError) throw opts.throwError;
+				return cb(manager);
+			},
+		),
+	};
+	return {
+		dataSource: ds,
+		transactionCalls: transactionCalls,
+	};
+}
+
+async function buildServiceWithDeps(
+	repo: { findOne?: jest.Mock; createQueryBuilder?: jest.Mock },
+	dataSource: { transaction: jest.Mock },
+): Promise<ProjectsService> {
+	const module: TestingModule = await Test.createTestingModule({
+		providers: [
+			ProjectsService,
+			{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+			{
+				provide: getRepositoryToken(ProjectUrlEntity),
+				useValue: {},
+			},
+			{ provide: DataSource, useValue: dataSource },
+		],
+	}).compile();
+	return module.get(ProjectsService);
+}
+
+const CREATE_DTO = {
+	title: "Portfolio app",
+	slug: "portfolio-app",
+	description: "My portfolio",
+};
+
+describe("ProjectsService.create", () => {
+	it("happy path: persists project + urls in a single transaction", async () => {
+		// Arrange: pre-check returns null (slug free). Manager.save
+		// returns the saved row; manager.insert is called for urls.
+		const repo = {
+			findOne: jest.fn().mockResolvedValue(null),
+		};
+		const mgr = makeManagerFake();
+		mgr.manager.create.mockReturnValue({ ...CREATE_DTO });
+		mgr.manager.save.mockResolvedValue({
+			id: "new-id",
+			...CREATE_DTO,
+			tags: [],
+			isPublished: false,
+			content: null,
+			coverImage: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			urls: [],
+		});
+		mgr.manager.insert.mockResolvedValue({ identifiers: [] });
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceWithDeps(repo, dataSource);
+		const out = await service.create({
+			...CREATE_DTO,
+			urls: [{ title: "Repo", url: "https://x.io" }],
+		});
+
+		// Assert: pre-check ran with the slug.
+		expect(repo.findOne).toHaveBeenCalledWith({
+			where: { slug: CREATE_DTO.slug },
+			select: { id: true },
+		});
+		// Assert: transaction was opened.
+		expect(dataSource.transaction).toHaveBeenCalledTimes(1);
+		// Assert: manager.create, manager.save, manager.insert all fired.
+		expect(mgr.manager.create).toHaveBeenCalled();
+		expect(mgr.manager.save).toHaveBeenCalled();
+		expect(mgr.manager.insert).toHaveBeenCalled();
+		// Assert: response has the saved id.
+		expect(out.id).toBe("new-id");
+	});
+
+	it("pre-check on duplicate slug throws 409 and never opens a transaction", async () => {
+		const repo = {
+			findOne: jest.fn().mockResolvedValue({ id: "taken" }),
+		};
+		const mgr = makeManagerFake();
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceWithDeps(repo, dataSource);
+		await expect(service.create(CREATE_DTO)).rejects.toThrow(
+			ConflictException,
+		);
+		// Critical: the pre-check fires BEFORE the transaction. A
+		// 409 on the pre-check must never reach `dataSource.transaction`.
+		expect(dataSource.transaction).not.toHaveBeenCalled();
+	});
+
+	it("QueryFailedError(23505) re-throws as 409 (race catch)", async () => {
+		// Pre-check passes (no row), but the transaction hits a unique
+		// violation because a concurrent insert grabbed the slug.
+		const repo = {
+			findOne: jest.fn().mockResolvedValue(null),
+		};
+		const mgr = makeManagerFake();
+		mgr.manager.create.mockReturnValue({ ...CREATE_DTO });
+		// QueryFailedError's `code` lives on the wrapped driverError
+		// (the third constructor arg). pg's `error.code` is a string
+		// like '23505'. Assign it as a regular enumerable property
+		// so QueryFailedError's ObjectUtils.assign(...) picks it up
+		// when copying driverError fields onto itself.
+		const driverError = Object.assign(
+			new Error(
+				'duplicate key value violates unique constraint "projects_slug_key"',
+			),
+			{ code: "23505" },
+		);
+		mgr.manager.save.mockRejectedValue(
+			new QueryFailedError("insert into projects ...", [], driverError),
+		);
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceWithDeps(repo, dataSource);
+		await expect(service.create(CREATE_DTO)).rejects.toThrow(
+			ConflictException,
+		);
+	});
+
+	it("non-23505 errors are NOT translated to 409 (re-thrown as-is)", async () => {
+		// Defensive: a generic Postgres error (e.g. 23503 FK violation)
+		// must NOT be masked as a 409 — the filter will render a 500.
+		const repo = {
+			findOne: jest.fn().mockResolvedValue(null),
+		};
+		const mgr = makeManagerFake();
+		mgr.manager.create.mockReturnValue({ ...CREATE_DTO });
+		const boom = new Error("connection lost");
+		mgr.manager.save.mockRejectedValue(boom);
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceWithDeps(repo, dataSource);
+		await expect(service.create(CREATE_DTO)).rejects.toBe(boom);
+	});
+
+	it("happy path with NO urls: insert is NOT called, transaction still commits", async () => {
+		const repo = {
+			findOne: jest.fn().mockResolvedValue(null),
+		};
+		const mgr = makeManagerFake();
+		mgr.manager.create.mockReturnValue({ ...CREATE_DTO });
+		mgr.manager.save.mockResolvedValue({
+			id: "new-id",
+			...CREATE_DTO,
+			tags: [],
+			isPublished: false,
+			content: null,
+			coverImage: null,
+			createdAt: new Date(),
+			updatedAt: new Date(),
+			urls: [],
+		});
+		const { dataSource } = makeDataSourceWithTransaction(mgr.manager);
+
+		const service = await buildServiceWithDeps(repo, dataSource);
+		await service.create({ ...CREATE_DTO }); // no urls
+		expect(mgr.manager.insert).not.toHaveBeenCalled();
+		expect(dataSource.transaction).toHaveBeenCalledTimes(1);
 	});
 });

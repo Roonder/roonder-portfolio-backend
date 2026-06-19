@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException } from "@nestjs/common";
+import {
+	Injectable,
+	ConflictException,
+	NotFoundException,
+} from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { DataSource, Repository } from "typeorm";
+import { DataSource, QueryFailedError, Repository } from "typeorm";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
 import { CreateProjectDto } from "./dto/create-project.dto";
@@ -115,10 +119,92 @@ export class ProjectsService {
 
 	// --- Admin writes (Tasks 2.5, 2.6, 2.7) --------------------------
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	create(dto: CreateProjectDto): Promise<unknown> {
-		// Implemented in Task 2.5 (slug pre-check + 23505 race catch).
-		throw new Error("create not implemented yet");
+	/**
+	 * `POST /api/v1/projects` — admin create.
+	 *
+	 * Flow:
+	 *   1. Pre-check `slug` uniqueness via `findOne` with
+	 *      `select: { id: true }`. If a row already exists, throw
+	 *      `ConflictException("Slug already in use")` BEFORE the
+	 *      transaction (saves a wasted transaction).
+	 *   2. Open `dataSource.transaction(...)` and persist the
+	 *      project row + initial `project_urls` rows inside it.
+	 *   3. On `QueryFailedError` with PG code `23505` (unique
+	 *      violation) re-throw `ConflictException` — the spec
+	 *      scenario "Duplicate slug returns 409" requires the same
+	 *      response body for the pre-check and the race-catch.
+	 *   4. Any other error re-throws untouched (the filter renders
+	 *      a 500 with full diagnostics in dev, sanitised in prod).
+	 *
+	 * The transaction is `READ COMMITTED` (Postgres default; ADR-4).
+	 * The pre-check is NOT inside the transaction — it is a fast
+	 * optimistic check. The race-catch covers the case where two
+	 * admins POST the same slug at the same time.
+	 */
+	async create(dto: CreateProjectDto): Promise<ProjectResponseDto> {
+		const existing = await this.projects.findOne({
+			where: { slug: dto.slug },
+			select: { id: true },
+		});
+		if (existing) {
+			throw new ConflictException("Slug already in use");
+		}
+		try {
+			const saved = await this.dataSource.transaction(
+				async (manager): Promise<ProjectEntity> => {
+					const row = manager.create(ProjectEntity, {
+						title: dto.title,
+						slug: dto.slug,
+						description: dto.description,
+						content: dto.content ?? null,
+						coverImage: dto.coverImage ?? null,
+						tags: dto.tags ?? [],
+						isPublished: dto.isPublished ?? false,
+					});
+					const persisted = await manager.save(row);
+					if (dto.urls && dto.urls.length > 0) {
+						await manager.insert(
+							ProjectUrlEntity,
+							dto.urls.map((u) => ({
+								projectId: persisted.id,
+								title: u.title,
+								url: u.url,
+							})),
+						);
+					}
+					return persisted;
+				},
+			);
+			// Re-fetch with the urls relation so the response body
+			// matches `ProjectResponseDto.urls` shape.
+			const withUrls = await this.projects.findOne({
+				where: { id: saved.id },
+				relations: { urls: true },
+			});
+			return toProjectResponse(withUrls ?? saved);
+		} catch (e) {
+			// Postgres code 23505 = unique_violation. We only
+			// translate it to a 409 when the violation is on the
+			// slug (the only unique constraint we touch here).
+			if (this.isSlugUniqueViolation(e)) {
+				throw new ConflictException("Slug already in use");
+			}
+			throw e;
+		}
+	}
+
+	/**
+	 * Returns true if `e` is a `QueryFailedError` whose driver
+	 * error has code `23505` AND the message mentions `slug`
+	 * (the only unique index this service writes to). Other
+	 * unique violations (e.g. a future `project_urls.url` index)
+	 * would still 500 — the spec only locks the slug case.
+	 */
+	private isSlugUniqueViolation(e: unknown): boolean {
+		if (!(e instanceof QueryFailedError)) return false;
+		const code = (e as QueryFailedError & { code?: string }).code;
+		const message = e.message ?? "";
+		return code === "23505" && /slug/i.test(message);
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
