@@ -129,3 +129,24 @@ Every code task follows red → green → refactor. The TDD evidence:
 ## Engram breadcrumb
 
 `topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
+
+---
+
+## PR2 — api-surface (started 2026-06-18)
+Anchored by commit: `chore(sdd): pr2-api-surface start`
+Scope: DTOs (Create/Update/Query/Response/ProjectUrl) + custom `@IsUniqueUrlInArray` validator + ProjectsService (findPublic, findOneBySlug, create, update with DIFF + transaction, remove) + ProjectsController (5 routes, JwtAuthGuard on 3, Swagger annotations) + ProjectsModule wire (`TypeOrmModule.forFeature([ProjectEntity, ProjectUrlEntity])`) + TestFakesModule extension for the new entity repos in `app.module.spec.ts` / `main.spec.ts`.
+
+Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push. NO PR. Append-only commits. Per-PR LOC forecast (~400) is informational only — no hard ceiling; all 9 tasks land.
+
+| Task | Title | Status | Commit | Note |
+|------|-------|--------|--------|------|
+| 2.1  | DTOs + `@IsUniqueUrlInArray` validator | pending | — | — |
+| 2.2  | ProjectsService skeleton (2 repos + DataSource) | pending | — | — |
+| 2.3  | findPublic(query) — envelope + filters + pagination | pending | — | — |
+| 2.4  | findOneBySlug(slug) — no-existence-leak 404 | pending | — | — |
+| 2.5  | create(dto) — slug pre-check + race catch | pending | — | — |
+| 2.6  | applyProjectUrlsDiff + update(id, dto) — DIFF + tx + 3-retry | pending | — | — |
+| 2.7  | remove(id) — cascade | pending | — | — |
+| 2.8  | ProjectsController — 5 routes, JwtAuthGuard, Swagger | pending | — | — |
+| 2.9  | Register ProjectsModule forFeature + TestFakesModule fakes | pending | — | — |
+
