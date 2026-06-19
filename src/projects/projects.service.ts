@@ -5,11 +5,14 @@ import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
 import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
+import { ListProjectsQueryDto } from "./dto/list-projects-query.dto";
+import type { ListProjectsResult } from "./dto/list-projects-response.dto";
+import { toProjectResponse } from "./project-response.mapper";
 
 /**
- * Projects domain service. Methods are populated in the per-task
- * commits (2.3 findPublic, 2.4 findOneBySlug, 2.5 create, 2.6 update
- * with DIFF + transaction, 2.7 remove). This Task 2.2 wires the 3
+ * Projects domain service. The methods are filled in by Tasks 2.3
+ * (findPublic), 2.4 (findOneBySlug), 2.5 (create), 2.6 (update with
+ * DIFF + transaction), and 2.7 (remove). This Task 2.2 wires the 3
  * deps the design locks in:
  *
  *   - `projects` — `Repository<ProjectEntity>` for the projects table.
@@ -18,12 +21,10 @@ import { UpdateProjectDto } from "./dto/update-project.dto";
  *   - `dataSource` — the shared `DataSource`, used by
  *     `dataSource.transaction(...)` in the write paths (ADR-4).
  *
- * Replaces the original 5-method scaffold that had the `+id` numeric
- * coercion bug and unused DTO params. The 2 pre-existing lint errors
- * (`'createProjectDto' is defined but never used`,
- * `'updateProjectDto' is defined but never used`) resolve to 0 as a
- * side effect of this rewrite — the new methods USE the DTOs even
- * before their bodies are filled in.
+ * Replacing the original 5-method stub (which had the
+ * `+id` numeric coercion bug and unused DTO params — see the
+ * pre-existing 2 lint errors that this rewrite resolves to 0 as
+ * a side effect).
  */
 @Injectable()
 export class ProjectsService {
@@ -37,10 +38,53 @@ export class ProjectsService {
 
 	// --- Public reads (Tasks 2.3, 2.4) --------------------------------
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	findPublic(query: unknown): Promise<unknown> {
-		// Implemented in Task 2.3 (envelope + tags filter + pageSize cap).
-		throw new Error("findPublic not implemented yet");
+	/**
+	 * `GET /api/v1/projects` — paginated, filterable list of projects
+	 * for the public surface.
+	 *
+	 * Defaults (applied here, NOT in the DTO — see `ListProjectsQueryDto`
+	 * for the input contract):
+	 *   - `isPublished = true`     — anonymous callers see only published
+	 *   - `page = 1`
+	 *   - `pageSize = 20`
+	 *   - `pageSize` capped at 100 (spec scenario "pageSize is capped
+	 *     at 100": silently clamp, do NOT 400).
+	 *
+	 * Tag filter (ADR-3): the Postgres `@>` operator with
+	 * `ARRAY[:...tags]` binding. A GIN index on `tags` (added by
+	 * the migration in Task 1.5) keeps the operator sub-linear.
+	 * A project matches only when EVERY requested tag is present
+	 * in its `tags` column.
+	 *
+	 * @returns envelope `{ data, total, page, pageSize }`. `data` is
+	 * the slice for the requested page; `total` is the count of rows
+	 * that matched the filter (NOT the length of `data`).
+	 */
+	async findPublic(query: ListProjectsQueryDto): Promise<ListProjectsResult> {
+		const page = query.page ?? 1;
+		const pageSize = Math.min(query.pageSize ?? 20, 100);
+		const isPublished = query.isPublished ?? true;
+		const tags = query.tags ?? [];
+
+		const qb = this.projects
+			.createQueryBuilder("project")
+			.leftJoinAndSelect("project.urls", "url")
+			.where("project.is_published = :isPub", { isPub: isPublished })
+			.orderBy("project.created_at", "DESC")
+			.skip((page - 1) * pageSize)
+			.take(pageSize);
+
+		if (tags.length > 0) {
+			qb.andWhere("project.tags @> ARRAY[:...tags]", { tags });
+		}
+
+		const [rows, total] = await qb.getManyAndCount();
+		return {
+			data: rows.map(toProjectResponse),
+			total,
+			page,
+			pageSize,
+		};
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-unused-vars
