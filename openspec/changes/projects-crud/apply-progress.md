@@ -361,7 +361,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 
 | Task | Title | Status | Commit | Note |
 |------|-------|--------|--------|------|
-| 4.1  | `src/projects/README.md` | pending | — | — |
+| 4.1  | `src/projects/README.md` | ✅ | eafad67 | 307 lines. 8 sections: Overview (one paragraph: public read surface, JWT-protected write surface, the only public read domain), Route table (5 routes — 2 public, 3 JWT; method, path, auth, body/query, success, other 4xx; envelope shape shown), DTOs at a glance (6 DTOs + `@IsUniqueUrlInArray` link), Error envelope (canonical `{ statusCode, error, message, timestamp, path }` with JSON example + per-key "when is it set" table), DIFF semantics (4 cases — field absent / `urls: []` / non-empty DIFF / duplicate `url` rejected at DTO — each with a concrete before/after example), Auth & authorization (3 protected routes + `JwtAuthGuard` placement + 401 envelope), Test layout (unit colocated + e2e), Related docs (4 canonical links + the change folder). |
 | 4.2  | Dev seed script | pending | — | — |
 
 
