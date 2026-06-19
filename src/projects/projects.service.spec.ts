@@ -1,6 +1,7 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
+import { NotFoundException } from "@nestjs/common";
 import { ProjectsService } from "./projects.service";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
@@ -115,6 +116,147 @@ async function buildService(
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
+
+// Fixture rows for the findOneBySlug tests below. The slug lookup
+// returns one of these based on the `isPublished` gate.
+const ROW_PUBLISHED = {
+	id: "11111111-2222-3333-4444-555555555555",
+	title: "Portfolio app",
+	slug: "portfolio-app",
+	description: "My portfolio",
+	content: null,
+	coverImage: null,
+	tags: ["react"],
+	isPublished: true,
+	createdAt: new Date("2026-01-01T00:00:00Z"),
+	updatedAt: new Date("2026-01-01T00:00:00Z"),
+	urls: [],
+};
+const ROW_DRAFT = {
+	...ROW_PUBLISHED,
+	id: "22222222-2222-3333-4444-555555555555",
+	slug: "draft-idea",
+	isPublished: false,
+};
+
+function makeProjectsRepoWithFindOne(
+	rows: Array<typeof ROW_PUBLISHED | typeof ROW_DRAFT>,
+): {
+	createQueryBuilder: jest.Mock;
+	findOne: jest.Mock;
+} {
+	return {
+		createQueryBuilder: jest.fn(),
+		findOne: jest.fn(
+			(opts: { where: { slug: string; isPublished: boolean } }) => {
+				const hit = rows.find(
+					(r) =>
+						r.slug === opts.where.slug &&
+						r.isPublished === opts.where.isPublished,
+				);
+				return Promise.resolve(hit ?? null);
+			},
+		),
+	};
+}
+
+async function buildServiceWithRepo(repo: {
+	createQueryBuilder?: jest.Mock;
+	findOne?: jest.Mock;
+}): Promise<ProjectsService> {
+	const module: TestingModule = await Test.createTestingModule({
+		providers: [
+			ProjectsService,
+			{
+				provide: getRepositoryToken(ProjectEntity),
+				useValue: repo,
+			},
+			{
+				provide: getRepositoryToken(ProjectUrlEntity),
+				useValue: {},
+			},
+			{ provide: DataSource, useValue: {} },
+		],
+	}).compile();
+	return module.get(ProjectsService);
+}
+
+describe("ProjectsService.findOneBySlug", () => {
+	it("returns the project when slug matches AND isPublished=true", async () => {
+		const repo = makeProjectsRepoWithFindOne([ROW_PUBLISHED]);
+		const service = await buildServiceWithRepo(repo);
+		const out = await service.findOneBySlug("portfolio-app");
+		expect(out.id).toBe(ROW_PUBLISHED.id);
+		expect(out.slug).toBe("portfolio-app");
+		expect(out.isPublished).toBe(true);
+	});
+
+	it("queries with the isPublished=true gate (one statement, not two)", async () => {
+		const repo = makeProjectsRepoWithFindOne([ROW_PUBLISHED]);
+		const service = await buildServiceWithRepo(repo);
+		await service.findOneBySlug("portfolio-app");
+		expect(repo.findOne).toHaveBeenCalledTimes(1);
+		const calls = repo.findOne.mock.calls as Array<
+			[{ where: { slug: string; isPublished: boolean } }]
+		>;
+		const call = calls[0]?.[0];
+		expect(call?.where.slug).toBe("portfolio-app");
+		expect(call?.where.isPublished).toBe(true);
+	});
+
+	it("throws NotFoundException when no project matches the slug", async () => {
+		const repo = makeProjectsRepoWithFindOne([]);
+		const service = await buildServiceWithRepo(repo);
+		await expect(service.findOneBySlug("does-not-exist")).rejects.toThrow(
+			NotFoundException,
+		);
+	});
+
+	it("throws NotFoundException when the project exists but isPublished=false (no existence leak)", async () => {
+		// The repo's findOne only returns the row when isPublished=true
+		// in the gate. A draft project (isPublished=false) does not
+		// match the where clause and is therefore NOT returned. The
+		// service must throw the same 404 body as the missing case.
+		const repo = makeProjectsRepoWithFindOne([ROW_DRAFT]);
+		const service = await buildServiceWithRepo(repo);
+		await expect(service.findOneBySlug("draft-idea")).rejects.toThrow(
+			NotFoundException,
+		);
+	});
+
+	it("emits identical 404 message for 'missing' and 'unpublished' cases (no existence leak)", async () => {
+		// Spec scenario "Unpublished project returns 404 (no existence
+		// leak)": the response body MUST NOT reveal whether the slug
+		// exists. We assert the two error messages are byte-equal.
+		const repoMissing = makeProjectsRepoWithFindOne([]);
+		const serviceMissing = await buildServiceWithRepo(repoMissing);
+		const missingErr = await serviceMissing
+			.findOneBySlug("does-not-exist")
+			.catch((e: Error) => e);
+
+		const repoDraft = makeProjectsRepoWithFindOne([ROW_DRAFT]);
+		const serviceDraft = await buildServiceWithRepo(repoDraft);
+		const draftErr = await serviceDraft
+			.findOneBySlug("draft-idea")
+			.catch((e: Error) => e);
+
+		expect(missingErr.message).toBe(draftErr.message);
+	});
+
+	it("includes the urls relation in the response (eager via relations: { urls: true })", async () => {
+		// The slug lookup uses `relations: { urls: true }` so the
+		// response body's `urls` field is populated. We assert the
+		// `findOne` call passes the relation config.
+		const repo = makeProjectsRepoWithFindOne([ROW_PUBLISHED]);
+		const service = await buildServiceWithRepo(repo);
+		await service.findOneBySlug("portfolio-app");
+		const calls = repo.findOne.mock.calls as Array<
+			[{ relations: { urls: boolean } }]
+		>;
+		const call = calls[0]?.[0];
+		expect(call?.relations).toEqual({ urls: true });
+	});
+});
 
 describe("ProjectsService.findPublic", () => {
 	it("applies the public default (isPublished=true) when query.isPublished is undefined", async () => {

@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { DataSource, Repository } from "typeorm";
 import { ProjectEntity } from "./entities/project.entity";
@@ -7,6 +7,7 @@ import { CreateProjectDto } from "./dto/create-project.dto";
 import { UpdateProjectDto } from "./dto/update-project.dto";
 import { ListProjectsQueryDto } from "./dto/list-projects-query.dto";
 import type { ListProjectsResult } from "./dto/list-projects-response.dto";
+import type { ProjectResponseDto } from "./dto/project-response.dto";
 import { toProjectResponse } from "./project-response.mapper";
 
 /**
@@ -87,10 +88,29 @@ export class ProjectsService {
 		};
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	findOneBySlug(slug: string): Promise<unknown> {
-		// Implemented in Task 2.4 (no-existence-leak 404).
-		throw new Error("findOneBySlug not implemented yet");
+	/**
+	 * `GET /api/v1/projects/:slug` — public read by slug.
+	 *
+	 * The `isPublished: true` gate is encoded in the `where` clause
+	 * so unpublished projects never reach the response shape.
+	 * Both "missing" and "unpublished" cases throw the same
+	 * `NotFoundException` body — the spec scenario
+	 * "Unpublished project returns 404 (no existence leak)" requires
+	 * that anonymous callers cannot distinguish the two.
+	 *
+	 * The error message is identical across both cases
+	 * ("Project not found") — that is the byte-equality the
+	 * existence-leak guard relies on.
+	 */
+	async findOneBySlug(slug: string): Promise<ProjectResponseDto> {
+		const row = await this.projects.findOne({
+			where: { slug, isPublished: true },
+			relations: { urls: true },
+		});
+		if (!row) {
+			throw new NotFoundException("Project not found");
+		}
+		return toProjectResponse(row);
 	}
 
 	// --- Admin writes (Tasks 2.5, 2.6, 2.7) --------------------------
