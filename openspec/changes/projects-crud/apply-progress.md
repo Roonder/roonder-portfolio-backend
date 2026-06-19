@@ -6,7 +6,7 @@ Scope: 2 entities (Project, ProjectUrl) + DataSource registration + DBML delta +
 
 | Task | Title | Status | Commit | Note |
 |------|-------|--------|--------|------|
-| 1.1  | Project entity | pending | — | — |
+| 1.1  | Project entity | ✅ | 80d11c6 | 10 columns + uuid pk + slug unique + isPublished default false + tags text[] + one-to-many (string target, resolved in 1.2) |
 | 1.2  | ProjectUrl entity | pending | — | — |
 | 1.3  | DataSource registration | pending | — | — |
 | 1.4  | DBML delta | pending | — | — |
