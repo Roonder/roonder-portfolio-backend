@@ -45,6 +45,7 @@ import {
 import { HttpAdapterHost } from "@nestjs/core";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigModule, ConfigService } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import request from "supertest";
@@ -88,13 +89,14 @@ interface ProjectUrlRow {
 	updatedAt: Date;
 }
 
-function newId(prefix: string): string {
-	// RFC 4122 v4 — easy to identify in failure messages.
-	const r = Math.random().toString(16).slice(2, 15);
-	return `${prefix}-${r}-${Date.now().toString(16)}`;
+function newId(): string {
+	// The PATCH/DELETE controllers use `ParseUUIDPipe` on `:id`, so the
+	// project id MUST be a real RFC 4122 v4 UUID. Node's built-in
+	// `crypto.randomUUID()` is RFC 4122 v4-compliant.
+	return globalThis.crypto.randomUUID();
 }
 
-function makeProjectRepo(): {
+function makeProjectRepo(childRowsRef: { rows: ProjectUrlRow[] }): {
 	repo: Record<string, jest.Mock>;
 	rows: ProjectRow[];
 } {
@@ -124,7 +126,9 @@ function makeProjectRepo(): {
 			if (opts.relations?.urls) {
 				return {
 					...row,
-					urls: row.urls.slice(),
+					urls: childRowsRef.rows.filter(
+						(u) => u.projectId === row.id,
+					),
 				};
 			}
 			const out: Record<string, unknown> = { ...row };
@@ -159,7 +163,7 @@ function makeProjectRepo(): {
 		}
 		const created: ProjectRow = {
 			...row,
-			id: row.id ?? newId("p"),
+			id: row.id ?? newId(),
 			createdAt: new Date(),
 			updatedAt: new Date(),
 			urls: row.urls ?? [],
@@ -174,9 +178,15 @@ function makeProjectRepo(): {
 		const idx = rows.findIndex((r) => r.id === criteria.id);
 		if (idx < 0) return { affected: 0 };
 		rows.splice(idx, 1);
-		// Cascade is the FK's job; in the fake we also drop the children so
-		// the in-memory state matches what the DB would do under ON DELETE
-		// CASCADE. The e2e never inspects the children's lifecycle directly.
+		// Cascade is the FK's job; in the fake we also drop the
+		// children so the in-memory state matches what the DB would
+		// do under ON DELETE CASCADE. The e2e verifies the post-DELETE
+		// state on the public GET (e.g. urls must be gone).
+		for (let i = childRowsRef.rows.length - 1; i >= 0; i--) {
+			if (childRowsRef.rows[i].projectId === criteria.id) {
+				childRowsRef.rows.splice(i, 1);
+			}
+		}
 		return { affected: 1 };
 	});
 
@@ -367,7 +377,7 @@ function makeDataSource(
 				}
 				const created = {
 					...r,
-					id: r.id ?? newId("u"),
+					id: r.id ?? newId(),
 					createdAt: new Date(),
 					updatedAt: new Date(),
 				};
@@ -385,7 +395,7 @@ function makeDataSource(
 			}
 			const created = {
 				...r,
-				id: r.id ?? newId("p"),
+				id: r.id ?? newId(),
 				createdAt: new Date(),
 				updatedAt: new Date(),
 				urls: r.urls ?? [],
@@ -402,12 +412,12 @@ function makeDataSource(
 					const r = d as unknown as ProjectUrlRow;
 					projectUrlRows.push({
 						...r,
-						id: newId("u"),
+						id: newId(),
 						createdAt: new Date(),
 						updatedAt: new Date(),
 					});
 				}
-				return { identifiers: data.map(() => ({ id: newId("u") })) };
+				return { identifiers: data.map(() => ({ id: newId() })) };
 			},
 		),
 		find: jest.fn(
@@ -507,8 +517,8 @@ function makeDataSource(
 
 // In-memory state shared across tests so the controller can read what
 // the service wrote within a test.
-const projectState = makeProjectRepo();
 const projectUrlState = makeProjectUrlRepo();
+const projectState = makeProjectRepo(projectUrlState);
 const dataSource = makeDataSource(projectState.rows, projectUrlState.rows);
 const fakeUserRepo = makeUserRepo();
 const fakeRefreshTokenRepo = makeRefreshTokenRepo();
@@ -642,7 +652,7 @@ describe("projects (e2e) — Task 3.1 harness + empty-list smoke", () => {
 function seedProject(overrides: Partial<ProjectRow>): ProjectRow {
 	const now = new Date();
 	const row: ProjectRow = {
-		id: overrides.id ?? newId("p"),
+		id: overrides.id ?? newId(),
 		title: overrides.title ?? "Untitled",
 		slug:
 			overrides.slug ?? `slug-${Math.random().toString(36).slice(2, 8)}`,
@@ -956,5 +966,341 @@ describe("projects (e2e) — Task 3.3 public detail by slug", () => {
 		// The `path` differs (different slug), but the shape and the
 		// other fields are byte-equal enough that an attacker cannot
 		// distinguish the two cases from the response.
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Task 3.4 — Admin CRUD e2e with JWT. The protected routes (POST, PATCH,
+// DELETE) require a valid `Authorization: Bearer ...` header signed with
+// the same JWT_SECRET the JwtStrategy uses. The e2e mints the token with
+// `JwtService` (instantiated with the test secret) — same approach as
+// test/auth.e2e-spec.ts (which uses a one-off `new JwtService(...)` for
+// each sign).
+//
+// The cases cover: 401 without JWT, 201 with valid body, 409 on duplicate
+// slug, 400 on duplicate `urls[].url` (DTO), 400 on unknown field
+// (forbidNonWhitelisted), 401 on PATCH/DELETE without JWT, 200 on PATCH
+// with `urls: []` (DIFF empty), 400 on PATCH with duplicate `urls[]`,
+// 200 on PATCH with `urls` absent (urls unchanged), 204 on DELETE, 404 on
+// second DELETE.
+// ---------------------------------------------------------------------------
+
+const TEST_JWT_SECRET = "test-secret-32-chars-min-..................";
+const TEST_ADMIN_ID = "11111111-2222-3333-4444-555555555555";
+const TEST_ADMIN_EMAIL = "admin@e2e.io";
+
+function signTestToken(
+	opts: { expired?: boolean; badSecret?: boolean } = {},
+): string {
+	const secret = opts.badSecret
+		? "totally-different-secret-32-chars-min...."
+		: TEST_JWT_SECRET;
+	const jwt = new JwtService({ secret, signOptions: { expiresIn: "15m" } });
+	// We can't `await` here synchronously, so we use the sync `sign`
+	// method (available on JwtService when the secret is provided).
+	return jwt.sign({
+		sub: TEST_ADMIN_ID,
+		email: TEST_ADMIN_EMAIL,
+	});
+}
+
+// Reusable bearer header. The same one is used across the admin tests.
+const ADMIN_BEARER = `Bearer ${signTestToken()}`;
+
+describe("projects (e2e) — Task 3.4 admin CRUD (JWT)", () => {
+	let app: INestApplication;
+
+	beforeEach(async () => {
+		projectState.rows.length = 0;
+		projectUrlState.rows.length = 0;
+		app = await bootstrapTestApp();
+	});
+
+	afterEach(async () => {
+		if (app) await app.close();
+	});
+
+	// -----------------------------------------------------------------
+	// POST /projects
+	// -----------------------------------------------------------------
+
+	it("POST /projects WITHOUT bearer: 401 + canonical envelope (no project row inserted)", async () => {
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.send({
+				title: "X",
+				slug: "x",
+				description: "x",
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(401);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+			path: string;
+		};
+		expect(body.statusCode).toBe(401);
+		expect(body.error).toBe("Unauthorized");
+		expect(body.path).toBe("/api/v1/projects");
+		// The guard short-circuits before the controller runs, so no
+		// row is inserted into the projects table.
+		expect(projectState.rows).toHaveLength(0);
+	});
+
+	it("POST /projects WITH valid bearer + valid body: 201 + ProjectResponseDto shape", async () => {
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.set("Authorization", ADMIN_BEARER)
+			.send({
+				title: "Portfolio App",
+				slug: "portfolio-app",
+				description: "A portfolio project",
+				tags: ["React", "NestJS"],
+				urls: [
+					{ title: "Live", url: "https://live.example.com" },
+					{ title: "Repo", url: "https://github.com/x/y" },
+				],
+				isPublished: true,
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(201);
+		const body = res.body as {
+			slug: string;
+			title: string;
+			isPublished: boolean;
+			urls: Array<{ title: string; url: string }>;
+			tags: string[];
+		};
+		expect(body.slug).toBe("portfolio-app");
+		expect(body.title).toBe("Portfolio App");
+		expect(body.isPublished).toBe(true);
+		expect(body.tags).toEqual(["react", "nestjs"]); // normalised
+		expect(body.urls).toHaveLength(2);
+		// The project + urls were persisted in-memory.
+		expect(projectState.rows).toHaveLength(1);
+		expect(projectUrlState.rows).toHaveLength(2);
+	});
+
+	it("POST /projects WITH bearer + duplicate slug: 409", async () => {
+		// Pre-seed a project with the same slug.
+		seedProject({ slug: "taken", title: "Taken", isPublished: true });
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.set("Authorization", ADMIN_BEARER)
+			.send({
+				title: "Conflict",
+				slug: "taken",
+				description: "will collide",
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(409);
+		const body = res.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+		};
+		expect(body.statusCode).toBe(409);
+		expect(body.error).toBe("Conflict");
+		expect(body.message).toBe("Slug already in use");
+		// No new row inserted.
+		expect(projectState.rows).toHaveLength(1);
+	});
+
+	it("POST /projects WITH bearer + duplicate url in urls[]: 400 (DTO-level @IsUniqueUrlInArray)", async () => {
+		// Per spec scenario "Two urls sharing the same `url` value are
+		// rejected at DTO validation" — for POST the DTO is the same as
+		// PATCH, so the constraint fires here too.
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.set("Authorization", ADMIN_BEARER)
+			.send({
+				title: "Dup URL",
+				slug: "dup-url",
+				description: "x",
+				urls: [
+					{ title: "a", url: "https://x" },
+					{ title: "b", url: "https://x" },
+				],
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(400);
+		// The DTO rejected the duplicate — no project row was inserted.
+		expect(projectState.rows).toHaveLength(0);
+	});
+
+	it("POST /projects WITH bearer + unknown field: 400 (forbidNonWhitelisted)", async () => {
+		// Per spec scenario "Malformed body returns 400 (forbidNonWhitelisted)".
+		const res = await request(app.getHttpServer() as App)
+			.post("/api/v1/projects")
+			.set("Authorization", ADMIN_BEARER)
+			.send({
+				title: "X",
+				slug: "x",
+				description: "x",
+				isAdmin: true, // unknown field
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(400);
+		expect(projectState.rows).toHaveLength(0);
+	});
+
+	// -----------------------------------------------------------------
+	// PATCH /projects/:id
+	// -----------------------------------------------------------------
+
+	it("PATCH /projects/:id WITHOUT bearer: 401", async () => {
+		// Pre-seed so the id is valid — the 401 must come from the guard,
+		// not from a missing project 404.
+		seedProject({ slug: "x", title: "X" });
+		const id = projectState.rows[0]?.id ?? "";
+		const res = await request(app.getHttpServer() as App)
+			.patch(`/api/v1/projects/${id}`)
+			.send({ title: "hijack" })
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(401);
+		// The title was not updated.
+		expect(projectState.rows[0]?.title).toBe("X");
+	});
+
+	it("PATCH /projects/:id WITH bearer + urls:[]: 200, all existing urls removed (DIFF empty)", async () => {
+		// Per spec scenario "urls empty array removes all project_urls".
+		// Seed with two urls; the DIFF should remove both.
+		const project = seedProject({ slug: "x", title: "X" });
+		projectUrlState.rows.push({
+			id: "u-1",
+			projectId: project.id,
+			title: "A",
+			url: "https://a",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		projectUrlState.rows.push({
+			id: "u-2",
+			projectId: project.id,
+			title: "B",
+			url: "https://b",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		const res = await request(app.getHttpServer() as App)
+			.patch(`/api/v1/projects/${project.id}`)
+			.set("Authorization", ADMIN_BEARER)
+			.send({ urls: [] })
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(200);
+		// Follow-up GET on the public detail route MUST show urls: [].
+		const detail = await request(app.getHttpServer() as App).get(
+			`/api/v1/projects/x`,
+		);
+		expect(detail.status).toBe(200);
+		const detailBody = detail.body as { urls: unknown[] };
+		expect(detailBody.urls).toEqual([]);
+		// And the in-memory child rows are gone.
+		const remaining = projectUrlState.rows.filter(
+			(u) => u.projectId === project.id,
+		);
+		expect(remaining).toHaveLength(0);
+	});
+
+	it("PATCH /projects/:id WITH bearer + duplicate url in urls[]: 400 (DTO-level)", async () => {
+		// Per spec scenario "Two urls sharing the same `url` value are
+		// rejected at DTO validation".
+		const project = seedProject({ slug: "x", title: "X" });
+		const res = await request(app.getHttpServer() as App)
+			.patch(`/api/v1/projects/${project.id}`)
+			.set("Authorization", ADMIN_BEARER)
+			.send({
+				urls: [
+					{ title: "a", url: "https://x" },
+					{ title: "b", url: "https://x" },
+				],
+			})
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(400);
+		// The DTO rejected the duplicate; no urls were inserted.
+		const inserted = projectUrlState.rows.filter(
+			(u) => u.projectId === project.id,
+		);
+		expect(inserted).toHaveLength(0);
+	});
+
+	it("PATCH /projects/:id WITH bearer + urls absent: 200, urls unchanged (field-absent = no change)", async () => {
+		// Per spec scenario "urls field absent leaves project_urls unchanged".
+		const project = seedProject({ slug: "x", title: "Old Title" });
+		projectUrlState.rows.push({
+			id: "u-1",
+			projectId: project.id,
+			title: "A",
+			url: "https://a",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		const before = projectUrlState.rows.length;
+		const res = await request(app.getHttpServer() as App)
+			.patch(`/api/v1/projects/${project.id}`)
+			.set("Authorization", ADMIN_BEARER)
+			.send({ title: "New Title" })
+			.set("Content-Type", "application/json");
+		expect(res.status).toBe(200);
+		// The title changed.
+		expect(projectState.rows[0]?.title).toBe("New Title");
+		// The urls count is unchanged.
+		expect(projectUrlState.rows.length).toBe(before);
+		// The url row's content is unchanged.
+		const urlRow = projectUrlState.rows.find((u) => u.id === "u-1");
+		expect(urlRow?.title).toBe("A");
+		expect(urlRow?.url).toBe("https://a");
+	});
+
+	// -----------------------------------------------------------------
+	// DELETE /projects/:id
+	// -----------------------------------------------------------------
+
+	it("DELETE /projects/:id WITHOUT bearer: 401", async () => {
+		seedProject({ slug: "x", title: "X" });
+		const id = projectState.rows[0]?.id ?? "";
+		const res = await request(app.getHttpServer() as App).delete(
+			`/api/v1/projects/${id}`,
+		);
+		expect(res.status).toBe(401);
+		// Project still exists.
+		expect(projectState.rows).toHaveLength(1);
+	});
+
+	it("DELETE /projects/:id WITH bearer: 204; second DELETE returns 404", async () => {
+		// Per spec scenario "Valid bearer + known id deletes project and child urls".
+		const project = seedProject({
+			slug: "x",
+			title: "X",
+			isPublished: true,
+		});
+		projectUrlState.rows.push({
+			id: "u-1",
+			projectId: project.id,
+			title: "A",
+			url: "https://a",
+			createdAt: new Date(),
+			updatedAt: new Date(),
+		});
+		const first = await request(app.getHttpServer() as App)
+			.delete(`/api/v1/projects/${project.id}`)
+			.set("Authorization", ADMIN_BEARER);
+		expect(first.status).toBe(204);
+		expect(projectState.rows).toHaveLength(0);
+		expect(projectUrlState.rows).toHaveLength(0);
+
+		const second = await request(app.getHttpServer() as App)
+			.delete(`/api/v1/projects/${project.id}`)
+			.set("Authorization", ADMIN_BEARER);
+		expect(second.status).toBe(404);
+		const body = second.body as {
+			statusCode: number;
+			error: string;
+			message: string;
+		};
+		expect(body.statusCode).toBe(404);
+		expect(body.error).toBe("Not Found");
+		expect(body.message).toBe("Project not found");
 	});
 });
