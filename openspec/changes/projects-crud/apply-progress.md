@@ -141,7 +141,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 | Task | Title | Status | Commit | Note |
 |------|-------|--------|--------|------|
 | 2.1  | DTOs + `@IsUniqueUrlInArray` validator | ✅ | f97d9a6 | 9 files: 5 DTOs + 1 validator + 3 specs. 37 tests pass. Lint clean. Tags transform normalises (trim+lowercase+dedupe); `isPublished` query transform handles "true"/"false" string. |
-| 2.2  | ProjectsService skeleton (2 repos + DataSource) | pending | — | — |
+| 2.2  | ProjectsService skeleton (2 repos + DataSource) | ✅ | 9dae764 | Constructor wires @InjectRepository(ProjectEntity), @InjectRepository(ProjectUrlEntity), DataSource. 5 method stubs (findPublic/findOneBySlug/create/update/remove) throw 'not implemented yet'. Pre-existing 2 lint errors in service resolved. Required extending TestFakesModule in app.module.spec.ts and main.spec.ts with the 3 new fakes (a side effect of the new constructor). |
 | 2.3  | findPublic(query) — envelope + filters + pagination | pending | — | — |
 | 2.4  | findOneBySlug(slug) — no-existence-leak 404 | pending | — | — |
 | 2.5  | create(dto) — slug pre-check + race catch | pending | — | — |
