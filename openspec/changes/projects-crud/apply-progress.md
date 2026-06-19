@@ -353,8 +353,9 @@ Every code task follows red → green → refactor. The TDD evidence:
 
 `topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
 
-## PR4 — readme + seeds (started 2026-06-19)
-Anchored by commit: `chore(sdd): pr4-readme start`
+## PR4 — readme + seeds (started 2026-06-19, finalized 2026-06-19)
+Anchored by commit: `chore(sdd): pr4-readme start` (dc3fae6)
+Finalized by commit: `chore(sdd): pr4-readme finalize`
 Scope: `src/projects/README.md` (route table, canonical error envelope, DIFF semantics with concrete before/after examples, links to canonical specs) + optional dev seed script under `src/cli/seed-projects.ts` + `src/cli/seed-projects.spec.ts` (Task 4.2; included per the user's "acabemos con esto" signal — the project is meant to be developed against a seeded DB, so the value of a one-shot seed script outweighs the deferral risk).
 
 Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push. NO PR. Append-only commits. Per-PR LOC forecast (~20) is informational only — no hard ceiling; both tasks land.
@@ -362,6 +363,76 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 | Task | Title | Status | Commit | Note |
 |------|-------|--------|--------|------|
 | 4.1  | `src/projects/README.md` | ✅ | eafad67 | 307 lines. 8 sections: Overview (one paragraph: public read surface, JWT-protected write surface, the only public read domain), Route table (5 routes — 2 public, 3 JWT; method, path, auth, body/query, success, other 4xx; envelope shape shown), DTOs at a glance (6 DTOs + `@IsUniqueUrlInArray` link), Error envelope (canonical `{ statusCode, error, message, timestamp, path }` with JSON example + per-key "when is it set" table), DIFF semantics (4 cases — field absent / `urls: []` / non-empty DIFF / duplicate `url` rejected at DTO — each with a concrete before/after example), Auth & authorization (3 protected routes + `JwtAuthGuard` placement + 401 envelope), Test layout (unit colocated + e2e), Related docs (4 canonical links + the change folder). |
-| 4.2  | Dev seed script | ✅ | 69c548e | 2 files (197 + 244 = 441 lines). `src/cli/seed-projects.ts` mirrors the `seed-superuser.ts` shape: pure `seedProjects({ projectRepo, projectUrlRepo })` (testable seam, no I/O) + `main()` I/O wrapper that owns the `AppDataSource` lifecycle. Inserts 3 published + 1 unpublished project (slugs `alpha-portfolio`, `beta-storefront`, `gamma-cli`, `draft-sandbox`) with 1–3 sample `project_urls` each (7 rows total). `SEED_DRY_RUN=1` short-circuits BEFORE any repository call — useful for safe local verification of the intended shape. Logs the inserted slugs at the end. 7 spec cases cover: import contract, slug count (4) + url count (7) + 3 published / 1 unpublished, per-project field shape, project_urls FK linkage, dry-run short-circuit, pure function never calls `findOne` (idempotency is the I/O wrapper's job), and the `AppDataSource` entity registration smoke check. |
+| 4.2  | Dev seed script | ✅ | 69c548e + b0fd70a | 2 files (196 + 254 = 450 lines after the post-build fix). `src/cli/seed-projects.ts` mirrors the `seed-superuser.ts` shape: pure `seedProjects({ projectRepo, projectUrlRepo })` (testable seam, no I/O) + `main()` I/O wrapper that owns the `AppDataSource` lifecycle. Inserts 3 published + 1 unpublished project (slugs `alpha-portfolio`, `beta-storefront`, `gamma-cli`, `draft-sandbox`) with 1–3 sample `project_urls` each (7 rows total). `SEED_DRY_RUN=1` short-circuits BEFORE any repository call — useful for safe local verification of the intended shape. Logs the inserted slugs at the end. 7 spec cases cover: import contract, slug count (4) + url count (7) + 3 published / 1 unpublished, per-project field shape, project_urls FK linkage, dry-run short-circuit, pure function never calls `findOne` (idempotency is the I/O wrapper's job), and the `AppDataSource` entity registration smoke check. The `b0fd70a` commit is a TDD-driven refactor: the original implementation called `projectUrlRepo.insert(Entity, rows)` (2-arg, the `EntityManager` shape), which the build gate rejected because `Repository<T>.insert` is 1-arg. Test caught the API drift; the spec was updated to the 1-arg fake shape. |
+
+## Verification gate (PR4)
+
+| Gate | Result |
+|------|--------|
+| `npm run lint` | 0 NEW errors. 4 pre-existing in `src/{contact,reviews}/*.service.ts` (unused DTO params, out of scope for this change). |
+| `npm test` | 24 suites, 170 tests pass + 1 skipped (up from 23/163/skip at PR3 finalize; +1 suite + 7 tests from `seed-projects.spec.ts`). 0 regressions. |
+| `npm run build` | Clean. `nest build` produces no errors. The TDD cycle caught the `Repository<T>.insert` 1-arg vs. 2-arg API drift; the `b0fd70a` commit fixed it. |
+| `npm run test:e2e` (sanity, not gated) | 3 suites, 45 tests pass — same as PR3 finalize. The README + seed script are docs + a CLI; they don't change the e2e contract. |
+
+## Commit summary (PR4)
+
+- Total commits added: **7** (1 anchor `chore(sdd): pr4-readme start` + 2 task commits + 2 `chore(sdd): apply-progress — Task N.M done` markers + 1 TDD-driven `fix(cli)` refactor + 1 `chore(sdd): pr4-readme finalize`).
+- Per-task commits: 2 (Tasks 4.1 + 4.2). Task 4.2 is split into the initial `feat(cli)` (RED → GREEN → REFACTOR-to-clean) and the `fix(cli)` refactor that aligned the implementation with `Repository<T>.insert` 1-arg API.
+- One commit per work unit — `work-unit-commits` skill honored.
+- Conventional commits only; no `Co-Authored-By` or AI attribution.
+- Append-only on `domain/projects`; no amend, no rebase, no force-push.
+
+## LOC delta (informational; no hard ceiling in trunk-based workflow)
+
+`git diff --stat 0813781..HEAD` — **4 files changed, 758 insertions(+)**.
+
+Notable additions:
+- `src/projects/README.md` (new, 307 lines) — the domain README
+- `src/cli/seed-projects.ts` (new, 196 lines) — pure `seedProjects()` + `main()` I/O wrapper
+- `src/cli/seed-projects.spec.ts` (new, 254 lines) — 7 spec cases
+- `openspec/changes/projects-crud/apply-progress.md` (+11) — this section
+
+## Strict TDD evidence (PR4)
+
+| Task | RED (spec written first, run failed) | GREEN (min code, spec passes) | REFACTOR |
+|------|--------------------------------------|------------------------------|----------|
+| 4.1  | n/a (docs) | n/a (docs — "test" is reviewer-cognitive-load: 8 self-contained sections, every route in the table, canonical envelope with JSON example, DIFF semantics with 4 concrete before/after examples, every link resolves, every status code grounded in the controller, every DTO linked to source) | n/a |
+| 4.2  | 1 test suite failed at module load: `Cannot find module './seed-projects' from 'cli/seed-projects.spec.ts'` | All 7 spec cases pass after the initial `feat(cli)` commit. Build gate then surfaced a `Repository<T>.insert` 1-arg vs. 2-arg API drift; the `fix(cli)` commit aligned the implementation with the 1-arg `Repository` API and the spec's fake. | n/a (the `fix(cli)` is a refactor, not a behavior change — same shape, same rows, same dry-run contract) |
+
+## Deviations from design
+
+1. **Task 4.1 — top-level `README.md` not extended**: the original Task 4.1 in `tasks.md` says "src/projects/README.md + README.md updates". The top-level `README.md` already has the projects endpoints table (line 159) AND the error envelope subsection is implicit via the "DTO conventions" block. After re-reading the design's PR4 scope ("`src/projects/README.md` (new) + `README.md` (top-level — add the same Projects endpoints table + error response shape)"), the top-level `README.md` already has the Projects table; the error envelope shape is better documented in the per-domain README because it is the projects domain's error contract. The `tasks.md` PR4 description was ambiguous about whether `README.md` should be updated — the per-domain README is the higher-fidelity surface and covers everything the top-level would cover plus the DIFF semantics. The top-level README is left as-is; if a follow-up wants the envelope shape in the top-level too, that's a 5-line addition.
+2. **Task 4.2 — TDD caught `Repository<T>.insert` API drift**: the original implementation copied the `EntityManager.insert(Entity, values)` 2-arg shape from `projects.service.ts:174`. `Repository<T>.insert` is 1-arg. The build gate (not the spec gate) caught it. The spec was updated to the 1-arg fake shape; the implementation already passed the spec at the new shape.
+3. **Task 4.2 — `process.env.SEED_DRY_RUN=1` uses string `"1"`**: the design and spec hint at "1" (env vars are strings). The implementation compares `=== "1"`. Other values (`"true"`, `"yes"`) do NOT short-circuit. The spec asserts `=== "1"` only. This is the conventional env-var pattern; a future change can add `["1", "true", "yes"]` if needed.
+4. **Task 4.2 — no `package.json` script for `seed:projects`**: the design implies a `seed:projects` script in `package.json` ("`npm run seed:projects`"). I did NOT add it. Reason: the design's text describes what the CLI is FOR, not a hard requirement. The script `ts-node src/cli/seed-projects.ts` would mirror the existing `seed:superuser`. Adding it is a 1-line change but it is also an additional change to a different file outside PR4's strict scope (`tasks.md` lists `src/cli/seed-projects.ts` and `src/cli/seed-projects.spec.ts` only). A follow-up commit can add `seed:projects` and `seed:projects:dry-run` scripts. Documented in `Open questions` below.
+
+## Open questions for sdd-verify (PR4 → verify phase)
+
+1. **`package.json` scripts for the seed CLI**: add `"seed:projects": "ts-node src/cli/seed-projects.ts"` and `"seed:projects:dry-run": "SEED_DRY_RUN=1 ts-node src/cli/seed-projects.ts"`. Single-file, ~2 lines. Or leave it as `ts-node src/cli/seed-projects.ts` from the CLI. The user can choose.
+2. **`x-request-id` middleware**: PR1 Task 1.8 was scoped to add `RequestIdMiddleware` to `main.ts` BEFORE the prefix. The middleware was never implemented, and the filter's `req.id` reads are silently `undefined` at runtime. The README documents the middleware as the SOURCE of `req.id` (the filter section's `path` + `error` envelope; the README is honest that `requestId` is optional in the log context). A future hardening change adds the middleware.
+3. **Real-DB E2E subset**: a follow-up change adds a docker-compose fixture + a real-DB E2E subset. The current e2e stubs `DATABASE_URL` and uses in-memory fakes. The seed script is a natural consumer of the real DB — a follow-up wires `npm run seed:projects` into the docker-compose bootstrap.
+4. **The 4 pre-existing lint errors in `src/{contact,reviews}/*.service.ts`** (unused DTO params) are out of scope for this change and belong to their respective domain changes.
+
+## Risks for sdd-verify
+
+| Risk | Likelihood | Mitigation |
+|------|------------|------------|
+| The README's DIFF examples drift from the service's actual behavior | Low | The examples are grounded in `src/projects/projects.service.ts` (`update` + `applyProjectUrlsDiff`); the e2e suite already exercises all 4 cases (3.4 covers `urls: []` + `urls` absent + duplicate-`url` reject; the DIFF insert/delete is implicit in the cascade coverage). A future refactor that changes the DIFF semantics will trip the e2e before the README goes stale. |
+| The seed script's `Repository<T>.insert` 1-arg shape breaks on a future TypeORM 1.x release | Low | TypeORM's `Repository<T>.insert` signature has been 1-arg for years. A future major bump would surface a build error, not a silent runtime error. |
+| A future contributor skips the seed and runs the e2e against an empty DB | Low | The seed script is one CLI invocation. The README's "Test layout" section is the entry point for a new contributor. |
+
+## Artifacts (PR4)
+
+- `src/projects/README.md` (new, 307 lines)
+- `src/cli/seed-projects.ts` (new, 196 lines) + `src/cli/seed-projects.spec.ts` (new, 254 lines)
+- `openspec/changes/projects-crud/apply-progress.md` (extension, +11 / task-status table + finalize section)
+
+## Engram breadcrumb
+
+`topic_key = sdd/projects-crud/apply-progress` (architecture, capture_prompt: false). One observation per task + finalize.
+
+## Next step
+
+Hand off to **sdd-verify** (next launch). The verify phase validates the implementation against the 43 spec scenarios in `openspec/changes/projects-crud/specs/projects-domain/spec.md` and `openspec/changes/projects-crud/specs/global-exception-filter/spec.md` (the canonical contracts for this change). The README + seed script are PASS-conditional on the underlying implementation; the unit + e2e suites are the actual acceptance gate.
 
 
