@@ -142,7 +142,7 @@ Workflow: trunk-based commit-range on `domain/projects`. NO work branch. NO push
 |------|-------|--------|--------|------|
 | 2.1  | DTOs + `@IsUniqueUrlInArray` validator | ✅ | f97d9a6 | 9 files: 5 DTOs + 1 validator + 3 specs. 37 tests pass. Lint clean. Tags transform normalises (trim+lowercase+dedupe); `isPublished` query transform handles "true"/"false" string. |
 | 2.2  | ProjectsService skeleton (2 repos + DataSource) | ✅ | 9dae764 | Constructor wires @InjectRepository(ProjectEntity), @InjectRepository(ProjectUrlEntity), DataSource. 5 method stubs (findPublic/findOneBySlug/create/update/remove) throw 'not implemented yet'. Pre-existing 2 lint errors in service resolved. Required extending TestFakesModule in app.module.spec.ts and main.spec.ts with the 3 new fakes (a side effect of the new constructor). |
-| 2.3  | findPublic(query) — envelope + filters + pagination | pending | — | — |
+| 2.3  | findPublic(query) — envelope + filters + pagination | ✅ | 41f6d5d | 6 files: service+spec extension + 3 new response DTOs + 1 mapper. 10 findPublic tests pass. `qb.andWhere('project.tags @> ARRAY[:...tags]', { tags })` captured. `pageSize > 100` silently clamped. Defaults `isPublished=true`, `page=1`, `pageSize=20` applied at the service (DTO stays a pure input contract). |
 | 2.4  | findOneBySlug(slug) — no-existence-leak 404 | pending | — | — |
 | 2.5  | create(dto) — slug pre-check + race catch | pending | — | — |
 | 2.6  | applyProjectUrlsDiff + update(id, dto) — DIFF + tx + 3-retry | pending | — | — |
