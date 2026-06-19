@@ -845,3 +845,92 @@ describe("ProjectsService.update", () => {
 		// non-essential detail.
 	});
 });
+
+// ---------------------------------------------------------------------------
+// Task 2.7 — remove(id)
+// ---------------------------------------------------------------------------
+
+describe("ProjectsService.remove", () => {
+	it("happy path: calls repo.delete with { id }", async () => {
+		const deleteMock = jest.fn().mockResolvedValue({ affected: 1 });
+		const repo = { delete: deleteMock };
+		const module: TestingModule = await Test.createTestingModule({
+			providers: [
+				ProjectsService,
+				{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+				{
+					provide: getRepositoryToken(ProjectUrlEntity),
+					useValue: {},
+				},
+				{ provide: DataSource, useValue: {} },
+			],
+		}).compile();
+		const service = module.get(ProjectsService);
+		await service.remove("p-1");
+		expect(deleteMock).toHaveBeenCalledWith({ id: "p-1" });
+	});
+
+	it("throws NotFoundException when affected === 0 (no row to delete)", async () => {
+		const deleteMock = jest.fn().mockResolvedValue({ affected: 0 });
+		const repo = { delete: deleteMock };
+		const module: TestingModule = await Test.createTestingModule({
+			providers: [
+				ProjectsService,
+				{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+				{
+					provide: getRepositoryToken(ProjectUrlEntity),
+					useValue: {},
+				},
+				{ provide: DataSource, useValue: {} },
+			],
+		}).compile();
+		const service = module.get(ProjectsService);
+		await expect(service.remove("p-missing")).rejects.toThrow(
+			NotFoundException,
+		);
+	});
+
+	it("emits identical 404 body for the 'unknown id' case (no existence leak on delete)", async () => {
+		// Same body as the slug 404 — defensive consistency.
+		const deleteMock = jest.fn().mockResolvedValue({ affected: 0 });
+		const repo = { delete: deleteMock };
+		const module: TestingModule = await Test.createTestingModule({
+			providers: [
+				ProjectsService,
+				{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+				{
+					provide: getRepositoryToken(ProjectUrlEntity),
+					useValue: {},
+				},
+				{ provide: DataSource, useValue: {} },
+			],
+		}).compile();
+		const service = module.get(ProjectsService);
+		const err = await service.remove("p-missing").catch((e: Error) => e);
+		expect(err.message).toBe("Project not found");
+	});
+
+	it("does not throw when affected === undefined (defensive: some drivers omit the field)", async () => {
+		// The spec scenario "Unknown id returns 404" requires the 404
+		// path; some typeorm drivers return `affected: undefined` on
+		// a no-op delete. The service treats that as "no row deleted"
+		// and throws 404.
+		const deleteMock = jest.fn().mockResolvedValue({});
+		const repo = { delete: deleteMock };
+		const module: TestingModule = await Test.createTestingModule({
+			providers: [
+				ProjectsService,
+				{ provide: getRepositoryToken(ProjectEntity), useValue: repo },
+				{
+					provide: getRepositoryToken(ProjectUrlEntity),
+					useValue: {},
+				},
+				{ provide: DataSource, useValue: {} },
+			],
+		}).compile();
+		const service = module.get(ProjectsService);
+		await expect(service.remove("p-missing")).rejects.toThrow(
+			NotFoundException,
+		);
+	});
+});

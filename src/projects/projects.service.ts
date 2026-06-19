@@ -357,9 +357,25 @@ export class ProjectsService {
 		}
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-unused-vars
-	remove(id: string): Promise<unknown> {
-		// Implemented in Task 2.7 (cascade).
-		throw new Error("remove not implemented yet");
+	/**
+	 * `DELETE /api/v1/projects/:id` — admin hard delete.
+	 *
+	 * `this.projects.delete({ id })` returns a `DeleteResult` with
+	 * `affected: number | undefined`. We treat 0 OR undefined as
+	 * "no row matched" and throw `NotFoundException` — the same
+	 * body as the `findOneBySlug` 404, defensive consistency.
+	 *
+	 * The cascade to `project_urls` is at the DB layer: the FK in
+	 * `ProjectUrlEntity.project` is configured with
+	 * `onDelete: 'CASCADE'` (Task 1.2), so the `project_urls` rows
+	 * are removed in the same DB operation. The service does NOT
+	 * issue a manual `manager.delete` for the child rows.
+	 */
+	async remove(id: string): Promise<void> {
+		const result = await this.projects.delete({ id });
+		const affected = result.affected ?? 0;
+		if (affected === 0) {
+			throw new NotFoundException("Project not found");
+		}
 	}
 }
