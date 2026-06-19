@@ -1,19 +1,21 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
+import { HttpAdapterHost } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
 import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { EnvConfig } from "./config/env.config";
+import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
 
 /**
  * Apply the cross-cutting HTTP setup (global prefix, validation pipe,
- * CORS, Swagger, cookie-parser) to a Nest application. Extracted from
- * `bootstrap()` so tests can build a parallel application with a
- * different module list (e.g. one that does NOT include the
- * TypeOrmModule data source — see `src/main.spec.ts`'s
- * `bootstrapTestApp`).
+ * CORS, Swagger, cookie-parser, global exception filter) to a Nest
+ * application. Extracted from `bootstrap()` so tests can build a
+ * parallel application with a different module list (e.g. one that
+ * does NOT include the TypeOrmModule data source — see
+ * `src/main.spec.ts`'s `bootstrapTestApp`).
  */
 export function configureApp(app: INestApplication): void {
 	app.setGlobalPrefix("api/v1");
@@ -64,6 +66,17 @@ export function configureApp(app: INestApplication): void {
 		.build();
 	const document = SwaggerModule.createDocument(app, swaggerConfig);
 	SwaggerModule.setup("docs", app, document, { useGlobalPrefix: true });
+	// Global exception filter — per spec global-exception-filter/spec.md
+	// §Requirement: "Filter Is Registered Globally in main.ts". Wired
+	// AFTER the CORS / Swagger / ValidationPipe setup so it is the
+	// last word on the body. The filter takes HttpAdapterHost (for
+	// `reply`) and ConfigService (for the prod/dev `NODE_ENV` branch).
+	app.useGlobalFilters(
+		new AllExceptionsFilter(
+			app.get(HttpAdapterHost),
+			app.get(ConfigService<EnvConfig>),
+		),
+	);
 }
 
 export async function bootstrap(): Promise<INestApplication> {

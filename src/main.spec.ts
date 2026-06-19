@@ -237,4 +237,20 @@ describe("bootstrap()", () => {
 		// read any environment variable directly via process.env.*.
 		expect(mainSource).not.toMatch(/process\.env\./);
 	});
+
+	it("main.ts wires the AllExceptionsFilter globally via useGlobalFilters", () => {
+		// Per spec global-exception-filter/spec.md §Requirement:
+		// "Filter Is Registered Globally in main.ts" — the filter
+		// MUST be registered with useGlobalFilters(new
+		// AllExceptionsFilter(...)) so every domain renders the
+		// canonical envelope.
+		expect(mainSource).toMatch(
+			/useGlobalFilters\s*\(\s*new\s+AllExceptionsFilter/,
+		);
+		// The filter takes HttpAdapterHost + ConfigService; the
+		// registration in main.ts MUST pass both so the prod/dev
+		// branch and the adapter reply path work.
+		expect(mainSource).toMatch(/HttpAdapterHost/);
+		expect(mainSource).toMatch(/ConfigService/);
+	});
 });
