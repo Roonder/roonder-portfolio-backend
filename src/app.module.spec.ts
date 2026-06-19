@@ -34,6 +34,7 @@ import { Global, Injectable, Module } from "@nestjs/common";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { DataSource } from "typeorm";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { ENV_CONFIG } from "./config/env.config";
 import { EnvConfig } from "./config/env.config";
@@ -43,6 +44,8 @@ import { ReviewsModule } from "./reviews/reviews.module";
 import { ContactModule } from "./contact/contact.module";
 import { UserEntity } from "./auth/entities/user.entity";
 import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
+import { ProjectEntity } from "./projects/entities/project.entity";
+import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -68,6 +71,15 @@ const fakeRefreshTokenRepo = {
 	insert: jest.fn(),
 	update: jest.fn(),
 };
+const fakeProjectRepo = {};
+const fakeProjectUrlRepo = {};
+// PR2 Task 2.2: ProjectsService takes a `DataSource` for
+// `dataSource.transaction(...)` in the write paths. The class
+// itself is provided by `TypeOrmModule` at runtime; in the unit
+// suite the module is mocked, so we expose an empty fake through
+// `TestFakesModule`. The service spec uses its own richer fake
+// (`fakeDataSource`) — see `src/projects/projects.service.spec.ts`.
+const fakeDataSource = {};
 
 @Global()
 @Module({
@@ -77,10 +89,27 @@ const fakeRefreshTokenRepo = {
 			provide: getRepositoryToken(RefreshTokenEntity),
 			useValue: fakeRefreshTokenRepo,
 		},
+		// PR2 Task 2.2/2.9: the new ProjectsService constructor takes
+		// ProjectEntity + ProjectUrlEntity repos + DataSource. Provide
+		// empty fakes so the module composition succeeds; richer
+		// fakes (with findPublic, create, etc.) live in the
+		// projects.service.spec suite, not here.
+		{
+			provide: getRepositoryToken(ProjectEntity),
+			useValue: fakeProjectRepo,
+		},
+		{
+			provide: getRepositoryToken(ProjectUrlEntity),
+			useValue: fakeProjectUrlRepo,
+		},
+		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
 		getRepositoryToken(UserEntity),
 		getRepositoryToken(RefreshTokenEntity),
+		getRepositoryToken(ProjectEntity),
+		getRepositoryToken(ProjectUrlEntity),
+		DataSource,
 	],
 })
 class TestFakesModule {}
