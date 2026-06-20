@@ -96,6 +96,7 @@ The server listens on `PORT` (default `3000`).
 | `npm run test:debug`       | Run unit tests with Node inspector                        |
 | `npm run test:e2e`         | Run E2E tests in `test/` via `jest-e2e.json`              |
 | `npm run seed:superuser`   | Upsert the superuser row from `SUPERUSER_EMAIL` / `SUPERUSER_PASSWORD` (idempotent) |
+| `npm run seed:reviews`     | Seed 3 approved + 2 pending reviews with sample comments (dev tool; set `SEED_DRY_RUN=1` to preview without DB writes) |
 | `npm run lint`             | ESLint with auto-fix on `src/`, `apps/`, `libs/`, `test/` |
 | `npm run format`           | Prettier on `src/**/*.ts` and `test/**/*.ts`              |
 
@@ -170,14 +171,45 @@ All HTTP routes are mounted under the global **`/api/v1`** prefix (see `src/main
 
 ### Reviews
 
-| Method | Path                                 | Auth   | Purpose                                      |
-| ------ | ------------------------------------ | ------ | -------------------------------------------- |
-| POST   | `/api/v1/reviews`                    | Public | Submit review (`is_approved: false` default) |
-| GET    | `/api/v1/reviews`                    | Public | List approved reviews                        |
-| GET    | `/api/v1/admin/reviews`              | JWT    | List all reviews (admin)                     |
-| PATCH  | `/api/v1/admin/reviews/:id/approve`  | JWT    | Toggle approval                              |
-| POST   | `/api/v1/reviews/:id/comments`       | Public | Add comment to a review                      |
-| DELETE | `/api/v1/admin/reviews/:id`          | JWT    | Delete review (admin)                        |
+| Method | Path                                 | Auth   | Purpose                                            |
+| ------ | ------------------------------------ | ------ | -------------------------------------------------- |
+| POST   | `/api/v1/reviews`                    | Public | Submit review (`is_approved: false` default)       |
+| GET    | `/api/v1/reviews`                    | Public | List approved reviews (paginated, `?rating=5` etc) |
+| POST   | `/api/v1/reviews/:id/comments`       | Public | Add comment to a review (`is_approved: false`)     |
+| GET    | `/api/v1/reviews/:id/comments`       | Public | List approved comments (paginated)                 |
+| GET    | `/api/v1/admin/reviews`              | JWT    | List all reviews (admin, paginated, filterable)    |
+| PATCH  | `/api/v1/admin/reviews/:id/approve`  | JWT    | Toggle approval (idempotent)                       |
+| DELETE | `/api/v1/admin/reviews/:id`          | JWT    | Delete review (admin, cascades to comments)        |
+
+Reviews follow the canonical 4xx/5xx envelope shape described in
+the [Project Structure](#project-structure) section. The 4 public
+routes are throttled per-route (see the [Anti-spam
+throttler](#anti-spam-throttler) subsection below); the 3 admin
+routes are not throttled.
+
+### Anti-spam throttler
+
+The public reviews surface (4 routes) is rate-limited via
+`@nestjs/throttler` to prevent spam. The throttler is per-route
+(`@ThrottledWrite()` on writes, `@ThrottledRead()` on reads) —
+`ThrottlerGuard` is **NOT** registered as a global `APP_GUARD`
+(verified by the static guard-rail in `src/app.module.spec.ts`).
+The 3 admin routes carry no `@Throttle()` decorator.
+
+| Env var                          | Default  | Joi floor | Used by                          |
+| -------------------------------- | -------- | --------- | -------------------------------- |
+| `REVIEWS_THROTTLE_TTL_MS`        | `60_000` | `1_000`   | The TTL window (ms)              |
+| `REVIEWS_THROTTLE_WRITE_LIMIT`   | `5`      | `1`       | 2 write routes (POST)            |
+| `REVIEWS_THROTTLE_READ_LIMIT`    | `60`     | `1`       | 2 read routes (GET)              |
+
+**Disable knob**: set both `_LIMIT` env vars to `1_000_000` to
+effectively disable the throttler (useful in load tests). The
+Joi floors (`min(1_000)` for TTL, `min(1)` for limits) prevent
+accidental misconfiguration.
+
+The throttler returns `429 Too Many Requests` through the
+global `AllExceptionsFilter` with the canonical envelope + a
+`Retry-After` header (preserved per ADR-12).
 
 ### Contact
 
