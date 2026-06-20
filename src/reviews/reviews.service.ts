@@ -1,4 +1,4 @@
-import { Injectable } from "@nestjs/common";
+import { Injectable, NotFoundException } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { ReviewEntity } from "./entities/review.entity";
@@ -131,32 +131,40 @@ export class ReviewsService {
 		};
 	}
 
-	// --- T8c: admin write paths (placeholders) ------------------------
+	// --- T8c: admin write paths ---------------------------------------
 
 	/**
 	 * `PATCH /api/v1/admin/reviews/:id/approve` — toggles `isApproved`.
-	 * Idempotent (called twice = original value). 404 on missing.
-	 * Lands in T8c.
+	 * Idempotent (called twice = original value). 404 on missing
+	 * (existence-leak guard, ADR-11). Reads the current value,
+	 * flips, saves. Maps via `toReviewResponse` (the `comments`
+	 * relation is not eager-loaded here so the mapper defaults to
+	 * `[]`).
 	 */
-	toggleApproval(_id: string): Promise<ReturnType<typeof toReviewResponse>> {
-		return Promise.resolve({
-			id: _id,
-			authorName: "",
-			authorRole: null,
-			content: "",
-			rating: 0,
-			isApproved: false,
-			createdAt: new Date(),
-			comments: [],
-		});
+	async toggleApproval(
+		id: string,
+	): Promise<ReturnType<typeof toReviewResponse>> {
+		const row = await this.reviews.findOne({ where: { id } });
+		if (!row) {
+			throw new NotFoundException("Review not found");
+		}
+		row.isApproved = !row.isApproved;
+		const saved = await this.reviews.save(row);
+		return toReviewResponse(saved);
 	}
 
 	/**
-	 * `DELETE /api/v1/admin/reviews/:id` — hard delete. The FK CASCADE
-	 * removes child comments. 404 on missing. Lands in T8c.
+	 * `DELETE /api/v1/admin/reviews/:id` — hard delete. The FK
+	 * CASCADE removes child comments. 404 on missing (existence-leak
+	 * guard, ADR-11). **No manual `comments.delete(...)`** — the FK
+	 * ON DELETE CASCADE (locked #4 / ADR-8) does the work at the DB
+	 * layer; the spec asserts `comments.delete` is NEVER called.
 	 */
-	remove(_id: string): Promise<void> {
-		return Promise.resolve();
+	async remove(id: string): Promise<void> {
+		const result = await this.reviews.delete({ id });
+		if (result.affected === 0) {
+			throw new NotFoundException("Review not found");
+		}
 	}
 
 	// --- T13: comment methods (placeholders) --------------------------

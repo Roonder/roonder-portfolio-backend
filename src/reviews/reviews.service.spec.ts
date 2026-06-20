@@ -4,6 +4,7 @@ import { NotFoundException } from "@nestjs/common";
 import { ReviewsService } from "./reviews.service";
 import { ReviewEntity } from "./entities/review.entity";
 import { ReviewCommentEntity } from "./entities/review-comment.entity";
+import { toReviewResponse } from "./review-response.mapper";
 
 // ---------------------------------------------------------------------------
 // Fakes. The reviews service takes 2 repository tokens; the create() path
@@ -329,5 +330,192 @@ describe("ReviewsService.findAllForAdmin (T8b)", () => {
 		await service.findAllForAdmin({ rating: 3 });
 		expect(repo.captured.andWheres).toHaveLength(1);
 		expect(repo.captured.andWheres[0]?.params).toEqual({ rating: 3 });
+	});
+});
+
+// ---------------------------------------------------------------------------
+// T8c: toggleApproval + remove. The fake Review repo is built with a
+// `findOne` + `save` for toggleApproval, and a `delete` returning
+// `{ affected }` for remove. The comments repo is also fake so the
+// test can assert the FK CASCADE contract (comments.delete is NEVER
+// called — the DB layer does the cascade).
+// ---------------------------------------------------------------------------
+
+const TOGGLE_BASE_ROW = {
+	id: "r-toggle-1",
+	authorName: "Maria",
+	authorRole: null,
+	content: "Great work on the dashboard redesign",
+	rating: 5,
+	isApproved: false,
+	createdAt: new Date("2026-06-19T10:00:00.000Z"),
+};
+
+function makeToggleRepo(
+	existing: { id: string; isApproved: boolean } | null,
+	commentsRepo: {
+		delete?: jest.Mock;
+	},
+): {
+	repo: {
+		findOne: jest.Mock;
+		save: jest.Mock;
+		delete: jest.Mock;
+	};
+	commentsRepo: typeof commentsRepo;
+} {
+	const row = existing ? { ...TOGGLE_BASE_ROW, ...existing } : null;
+	const saved = row ? { ...row } : null;
+	const repo = {
+		findOne: jest.fn().mockResolvedValue(row),
+		save: jest.fn((r: typeof row) => {
+			if (r && saved) saved.isApproved = r.isApproved;
+			return Promise.resolve(saved);
+		}),
+		delete: jest.fn(),
+	};
+	return { repo, commentsRepo };
+}
+
+async function buildServiceForToggle(
+	existing: { id: string; isApproved: boolean } | null,
+	commentsRepo: { delete?: jest.Mock } = {},
+): Promise<{
+	service: ReviewsService;
+	repo: ReturnType<typeof makeToggleRepo>["repo"];
+	commentsRepo: typeof commentsRepo;
+}> {
+	const { repo, commentsRepo: c } = makeToggleRepo(existing, commentsRepo);
+	const module: TestingModule = await Test.createTestingModule({
+		providers: [
+			ReviewsService,
+			{ provide: getRepositoryToken(ReviewEntity), useValue: repo },
+			{
+				provide: getRepositoryToken(ReviewCommentEntity),
+				useValue: c,
+			},
+		],
+	}).compile();
+	return {
+		service: module.get(ReviewsService),
+		repo,
+		commentsRepo: c,
+	};
+}
+
+describe("ReviewsService.toggleApproval (T8c)", () => {
+	it("flips isApproved from false to true and returns the mapped response", async () => {
+		const { service, repo } = await buildServiceForToggle({
+			id: "r-1",
+			isApproved: false,
+		});
+		const out = await service.toggleApproval("r-1");
+		expect(repo.save).toHaveBeenCalledTimes(1);
+		expect(repo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "r-1", isApproved: true }),
+		);
+		// Response shape is the mapper output for the saved row.
+		expect(out).toEqual(
+			toReviewResponse({
+				...TOGGLE_BASE_ROW,
+				id: "r-1",
+				isApproved: true,
+			}),
+		);
+	});
+
+	it("flips isApproved from true to false and returns the mapped response", async () => {
+		const { service, repo } = await buildServiceForToggle({
+			id: "r-1",
+			isApproved: true,
+		});
+		const out = await service.toggleApproval("r-1");
+		expect(repo.save).toHaveBeenCalledWith(
+			expect.objectContaining({ id: "r-1", isApproved: false }),
+		);
+		expect(out).toEqual(
+			toReviewResponse({
+				...TOGGLE_BASE_ROW,
+				id: "r-1",
+				isApproved: false,
+			}),
+		);
+	});
+
+	it("is idempotent — toggling twice returns to the original value", async () => {
+		// The state of the in-memory row is tracked via the fake
+		// `findOne` + `save`. The service mutates the row object
+		// before calling save, so on the second toggle the fake
+		// returns the flipped state.
+		const { service, repo } = await buildServiceForToggle({
+			id: "r-1",
+			isApproved: false,
+		});
+		const first = await service.toggleApproval("r-1");
+		expect(first.isApproved).toBe(true);
+		// Second toggle: stub findOne to return the flipped row.
+		repo.findOne.mockResolvedValueOnce({
+			...TOGGLE_BASE_ROW,
+			id: "r-1",
+			isApproved: true,
+		});
+		const second = await service.toggleApproval("r-1");
+		expect(second.isApproved).toBe(false);
+	});
+
+	it("throws NotFoundException on a missing id (404 existence-leak guard)", async () => {
+		const { service } = await buildServiceForToggle(null);
+		await expect(service.toggleApproval("missing")).rejects.toBeInstanceOf(
+			NotFoundException,
+		);
+	});
+
+	it("does NOT call comments.delete on the toggle path (FK CASCADE only fires on parent delete)", async () => {
+		// The comments repo fake is empty (no `delete` method) — the
+		// test asserts the service did NOT call anything on the
+		// comments repo during toggle.
+		const { service, commentsRepo } = await buildServiceForToggle({
+			id: "r-1",
+			isApproved: false,
+		});
+		await service.toggleApproval("r-1");
+		expect(commentsRepo.delete).toBeUndefined();
+	});
+});
+
+describe("ReviewsService.remove (T8c)", () => {
+	it("calls reviews.delete with the id once and resolves void on success", async () => {
+		const { service, repo } = await buildServiceForToggle({
+			id: "r-1",
+			isApproved: true,
+		});
+		repo.delete.mockResolvedValue({ affected: 1 });
+		await expect(service.remove("r-1")).resolves.toBeUndefined();
+		expect(repo.delete).toHaveBeenCalledTimes(1);
+		expect(repo.delete).toHaveBeenCalledWith({ id: "r-1" });
+	});
+
+	it("throws NotFoundException when delete affects 0 rows (404 existence-leak guard)", async () => {
+		const { service, repo } = await buildServiceForToggle(null);
+		repo.delete.mockResolvedValue({ affected: 0 });
+		await expect(service.remove("missing")).rejects.toBeInstanceOf(
+			NotFoundException,
+		);
+	});
+
+	it("does NOT call comments.delete — the FK CASCADE does the work at the DB layer (locked #4 / ADR-8)", async () => {
+		// Per locked design #4: the FK ON DELETE CASCADE on
+		// review_comments.review_id removes child rows. The service
+		// MUST NOT issue a manual comments.delete call. This test is
+		// the executable contract for that lock. The comments repo
+		// fake is wired with a `delete: jest.fn()` spy so we can
+		// assert it was NEVER called.
+		const { service, repo, commentsRepo } = await buildServiceForToggle(
+			{ id: "r-1", isApproved: true },
+			{ delete: jest.fn() },
+		);
+		repo.delete.mockResolvedValue({ affected: 1 });
+		await service.remove("r-1");
+		expect(commentsRepo.delete).not.toHaveBeenCalled();
 	});
 });
