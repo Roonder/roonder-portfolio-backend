@@ -52,6 +52,8 @@ import { UserEntity } from "./auth/entities/user.entity";
 import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
+import { ReviewEntity } from "./reviews/entities/review.entity";
+import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -86,6 +88,12 @@ const fakeProjectUrlRepo = {};
 // `TestFakesModule`. The service spec uses its own richer fake
 // (`fakeDataSource`) — see `src/projects/projects.service.spec.ts`.
 const fakeDataSource = {};
+// T11: ReviewsService injects ReviewEntity + ReviewCommentEntity
+// repos. Provide empty fakes so the module composition succeeds;
+// richer fakes (with createQueryBuilder, findOne, save, delete, etc.)
+// live in the reviews.service.spec suite, not here.
+const fakeReviewRepo = {};
+const fakeReviewCommentRepo = {};
 
 @Global()
 @Module({
@@ -108,6 +116,17 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ProjectUrlEntity),
 			useValue: fakeProjectUrlRepo,
 		},
+		// T11: ReviewsService injects ReviewEntity +
+		// ReviewCommentEntity repos. Empty fakes unblock the module
+		// composition; the actual service spec uses richer fakes.
+		{
+			provide: getRepositoryToken(ReviewEntity),
+			useValue: fakeReviewRepo,
+		},
+		{
+			provide: getRepositoryToken(ReviewCommentEntity),
+			useValue: fakeReviewCommentRepo,
+		},
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -115,6 +134,8 @@ const fakeDataSource = {};
 		getRepositoryToken(RefreshTokenEntity),
 		getRepositoryToken(ProjectEntity),
 		getRepositoryToken(ProjectUrlEntity),
+		getRepositoryToken(ReviewEntity),
+		getRepositoryToken(ReviewCommentEntity),
 		DataSource,
 	],
 })

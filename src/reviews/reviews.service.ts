@@ -4,6 +4,8 @@ import { Repository } from "typeorm";
 import { ReviewEntity } from "./entities/review.entity";
 import { ReviewCommentEntity } from "./entities/review-comment.entity";
 import { CreateReviewDto } from "./dto/create-review.dto";
+import { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
+import { ListReviewsResult } from "./dto/list-reviews-response.dto";
 import { toReviewResponse } from "./review-response.mapper";
 
 /**
@@ -71,8 +73,8 @@ export class ReviewsService {
 	 * silently clamped.
 	 */
 	async findAllApproved(
-		query: ListReviewsQueryDtoShape,
-	): Promise<ListReviewsResultShape> {
+		query: ListReviewsQueryDto,
+	): Promise<ListReviewsResult> {
 		const page = query.page ?? 1;
 		const pageSize = Math.min(query.pageSize ?? 20, 100);
 
@@ -102,8 +104,8 @@ export class ReviewsService {
 	 * filters. Same envelope shape as the public list.
 	 */
 	async findAllForAdmin(
-		query: ListReviewsQueryDtoShape,
-	): Promise<ListReviewsResultShape> {
+		query: ListReviewsQueryDto,
+	): Promise<ListReviewsResult> {
 		const page = query.page ?? 1;
 		const pageSize = Math.min(query.pageSize ?? 20, 100);
 
@@ -208,23 +210,10 @@ export class ReviewsService {
 	}
 }
 
-// Local structural types so the service does not require the
-// DTO classes (added in T7 / T12) to exist at the type level.
-// The runtime values are the same shape as the DTOs; the DTO
-// classes are `@ApiProperty`-decorated wrappers around the same
-// field set.
-interface ListReviewsQueryDtoShape {
-	page?: number;
-	pageSize?: number;
-	rating?: number;
-	isApproved?: boolean;
-}
-interface ListReviewsResultShape {
-	data: Array<{ id: string }>;
-	total: number;
-	page: number;
-	pageSize: number;
-}
+// Local structural types for the T13 comment methods. The
+// `CreateReviewCommentDto` + `ListCommentsQueryDto` DTOs are
+// added in T12; the service is forward-compatible with the
+// structural types until T12 lands.
 interface CreateReviewCommentDtoShape {
 	authorName?: string;
 	content: string;

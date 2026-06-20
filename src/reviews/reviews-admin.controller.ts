@@ -20,7 +20,10 @@ import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
 import { ReviewsService } from "./reviews.service";
 import { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import { ReviewResponseDto } from "./dto/review-response.dto";
-import { ListReviewsResponseDto } from "./dto/list-reviews-response.dto";
+import {
+	ListReviewsResponseDto,
+	ListReviewsResult,
+} from "./dto/list-reviews-response.dto";
 
 /**
  * Admin Reviews surface.
@@ -70,7 +73,9 @@ export class ReviewsAdminController {
 	})
 	@ApiResponse({ status: 400, description: "Invalid query parameters" })
 	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
-	findAllForAdmin(@Query() query: ListReviewsQueryDto) {
+	findAllForAdmin(
+		@Query() query: ListReviewsQueryDto,
+	): Promise<ListReviewsResult> {
 		return this.reviews.findAllForAdmin(query);
 	}
 

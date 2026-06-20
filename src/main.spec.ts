@@ -38,6 +38,8 @@ import { UserEntity } from "./auth/entities/user.entity";
 import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
+import { ReviewEntity } from "./reviews/entities/review.entity";
+import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -71,6 +73,11 @@ const fakeRefreshTokenRepo = {
 };
 const fakeProjectRepo = {};
 const fakeProjectUrlRepo = {};
+// T11: ReviewsService injects ReviewEntity + ReviewCommentEntity
+// repos. Empty fakes unblock the module graph (the actual
+// service spec uses richer fakes).
+const fakeReviewRepo = {};
+const fakeReviewCommentRepo = {};
 // PR2 Task 2.2: ProjectsService takes a `DataSource` for
 // `dataSource.transaction(...)` in the write paths. See
 // `src/app.module.spec.ts` for the rationale (the unit suite
@@ -101,6 +108,17 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ProjectUrlEntity),
 			useValue: fakeProjectUrlRepo,
 		},
+		// T11: ReviewsService injects ReviewEntity +
+		// ReviewCommentEntity repos. Empty fakes unblock the module
+		// composition.
+		{
+			provide: getRepositoryToken(ReviewEntity),
+			useValue: fakeReviewRepo,
+		},
+		{
+			provide: getRepositoryToken(ReviewCommentEntity),
+			useValue: fakeReviewCommentRepo,
+		},
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -108,6 +126,8 @@ const fakeDataSource = {};
 		getRepositoryToken(RefreshTokenEntity),
 		getRepositoryToken(ProjectEntity),
 		getRepositoryToken(ProjectUrlEntity),
+		getRepositoryToken(ReviewEntity),
+		getRepositoryToken(ReviewCommentEntity),
 		DataSource,
 	],
 })

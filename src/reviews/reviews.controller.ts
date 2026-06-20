@@ -5,7 +5,10 @@ import { ReviewsService } from "./reviews.service";
 import { CreateReviewDto } from "./dto/create-review.dto";
 import { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import { ReviewResponseDto } from "./dto/review-response.dto";
-import { ListReviewsResponseDto } from "./dto/list-reviews-response.dto";
+import {
+	ListReviewsResponseDto,
+	ListReviewsResult,
+} from "./dto/list-reviews-response.dto";
 
 /**
  * Public Reviews surface.
@@ -67,7 +70,9 @@ export class ReviewsController {
 		type: ListReviewsResponseDto,
 	})
 	@ApiResponse({ status: 400, description: "Invalid query parameters" })
-	findAllApproved(@Query() query: ListReviewsQueryDto) {
+	findAllApproved(
+		@Query() query: ListReviewsQueryDto,
+	): Promise<ListReviewsResult> {
 		return this.reviews.findAllApproved(query);
 	}
 }
