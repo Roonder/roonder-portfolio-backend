@@ -19,3 +19,4 @@
 - [x] T9 — ReviewsController v1 (POST + GET /reviews with throttling, no +id bug) — 1799d9b — 89 + 264
 - [x] T10 — ReviewsAdminController (3 protected routes, class-level JwtAuthGuard, no throttler) — 5ad2d6b — 96 + 248
 - [x] T11 — ReviewsModule wire (forFeature + 2 controllers + service export) + TestFakesModule extension — 702dedd — 56 + 134
+- [x] T12 — comment DTOs (Create + ListQuery + ReviewCommentResponse + envelope) + 4 specs — ebc1fed — 76 + 124
