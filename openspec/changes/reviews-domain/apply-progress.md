@@ -17,3 +17,4 @@
 - [x] T8b — ReviewsService.findAllApproved + findAllForAdmin (isApproved filter + 100-clamp + envelope) — efba832 — 56 + 199
 - [x] T8c — ReviewsService.toggleApproval + remove (NotFoundException 404 + FK CASCADE contract) — 3a398ce — 27 + 188
 - [x] T9 — ReviewsController v1 (POST + GET /reviews with throttling, no +id bug) — 1799d9b — 89 + 264
+- [x] T10 — ReviewsAdminController (3 protected routes, class-level JwtAuthGuard, no throttler) — 5ad2d6b — 96 + 248
