@@ -48,7 +48,9 @@ export class ReviewsService {
 	 * via `toReviewResponse` (the `comments` field defaults to `[]`
 	 * because the relation is not eager-loaded here).
 	 */
-	async create(dto: CreateReviewDto): Promise<ReturnType<typeof toReviewResponse>> {
+	async create(
+		dto: CreateReviewDto,
+	): Promise<ReturnType<typeof toReviewResponse>> {
 		const row = this.reviews.create({
 			authorName: dto.authorName ?? "Anónimo",
 			authorRole: dto.authorRole ?? null,
@@ -66,33 +68,67 @@ export class ReviewsService {
 	 * `GET /api/v1/reviews` — public list, paginated + filterable.
 	 * Filters to `isApproved: true` only (the existence-leak guard
 	 * from ADR-11). `?rating=5` is supported. `pageSize > 100` is
-	 * silently clamped. Lands in T8b.
+	 * silently clamped.
 	 */
-	findAllApproved(
-		_query: ListReviewsQueryDtoShape,
+	async findAllApproved(
+		query: ListReviewsQueryDtoShape,
 	): Promise<ListReviewsResultShape> {
-		return Promise.resolve({
-			data: [],
-			total: 0,
-			page: 1,
-			pageSize: 20,
-		});
+		const page = query.page ?? 1;
+		const pageSize = Math.min(query.pageSize ?? 20, 100);
+
+		const qb = this.reviews
+			.createQueryBuilder("review")
+			.where("review.is_approved = :isApproved", { isApproved: true })
+			.orderBy("review.created_at", "DESC")
+			.skip((page - 1) * pageSize)
+			.take(pageSize);
+
+		if (query.rating !== undefined) {
+			qb.andWhere("review.rating = :rating", { rating: query.rating });
+		}
+
+		const [rows, total] = await qb.getManyAndCount();
+		return {
+			data: rows.map(toReviewResponse),
+			total,
+			page,
+			pageSize,
+		};
 	}
 
 	/**
 	 * `GET /api/v1/admin/reviews` — admin list, paginated + filterable.
 	 * Defaults to ALL reviews (approved + pending). `?isApproved=true|false`
-	 * filters. Lands in T8b.
+	 * filters. Same envelope shape as the public list.
 	 */
-	findAllForAdmin(
-		_query: ListReviewsQueryDtoShape,
+	async findAllForAdmin(
+		query: ListReviewsQueryDtoShape,
 	): Promise<ListReviewsResultShape> {
-		return Promise.resolve({
-			data: [],
-			total: 0,
-			page: 1,
-			pageSize: 20,
-		});
+		const page = query.page ?? 1;
+		const pageSize = Math.min(query.pageSize ?? 20, 100);
+
+		const qb = this.reviews
+			.createQueryBuilder("review")
+			.orderBy("review.created_at", "DESC")
+			.skip((page - 1) * pageSize)
+			.take(pageSize);
+
+		if (query.isApproved !== undefined) {
+			qb.where("review.is_approved = :isApproved", {
+				isApproved: query.isApproved,
+			});
+		}
+		if (query.rating !== undefined) {
+			qb.andWhere("review.rating = :rating", { rating: query.rating });
+		}
+
+		const [rows, total] = await qb.getManyAndCount();
+		return {
+			data: rows.map(toReviewResponse),
+			total,
+			page,
+			pageSize,
+		};
 	}
 
 	// --- T8c: admin write paths (placeholders) ------------------------
@@ -102,9 +138,7 @@ export class ReviewsService {
 	 * Idempotent (called twice = original value). 404 on missing.
 	 * Lands in T8c.
 	 */
-	toggleApproval(
-		_id: string,
-	): Promise<ReturnType<typeof toReviewResponse>> {
+	toggleApproval(_id: string): Promise<ReturnType<typeof toReviewResponse>> {
 		return Promise.resolve({
 			id: _id,
 			authorName: "",
