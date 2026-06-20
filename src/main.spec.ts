@@ -303,4 +303,23 @@ describe("bootstrap()", () => {
 		expect(mainSource).toMatch(/HttpAdapterHost/);
 		expect(mainSource).toMatch(/ConfigService/);
 	});
+
+	it("main.ts sets app.set('trust proxy', 1) BEFORE useGlobalPipes (per reviews-throttling ADR-5)", () => {
+		// Per design ADR-5: the throttler reads req.ip, which
+		// must be resolved from X-Forwarded-For set by the single
+		// edge proxy. trust proxy MUST be set BEFORE the
+		// ValidationPipe (and therefore before any throttler
+		// request). The value `1` is the single-hop trust.
+		// Static source-read assertion: the order of the two
+		// statements matters for the throttler to see the real
+		// client IP.
+		expect(mainSource).toMatch(
+			/app\.set\(\s*["']trust proxy["']\s*,\s*1\s*\)/,
+		);
+		const trustProxyIdx = mainSource.indexOf("app.set('trust proxy', 1)");
+		const useGlobalPipesIdx = mainSource.indexOf("useGlobalPipes(");
+		expect(trustProxyIdx).toBeGreaterThan(-1);
+		expect(useGlobalPipesIdx).toBeGreaterThan(-1);
+		expect(trustProxyIdx).toBeLessThan(useGlobalPipesIdx);
+	});
 });

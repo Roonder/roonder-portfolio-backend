@@ -264,4 +264,20 @@ describe("AppModule", () => {
 		);
 		expect(source).not.toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
 	});
+
+	// --- T15: belt-and-braces — data-source.ts lists the new entities
+	it("data-source.ts registers ReviewEntity and ReviewCommentEntity (belt-and-braces)", () => {
+		// Per design ADR-7 + locked #2: the data-source entities
+		// array MUST include ReviewEntity and ReviewCommentEntity.
+		// The dedicated assertion at T4 (`data-source.spec.ts`)
+		// is the primary guard; this one is the secondary
+		// guard in the app composition spec so a future change
+		// that drops them is caught here too.
+		const dataSource = readFileSync(
+			resolve(__dirname, "data-source.ts"),
+			"utf8",
+		);
+		expect(dataSource).toMatch(/ReviewEntity/);
+		expect(dataSource).toMatch(/ReviewCommentEntity/);
+	});
 });

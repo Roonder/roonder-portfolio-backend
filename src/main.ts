@@ -19,6 +19,21 @@ import { AllExceptionsFilter } from "./common/filters/all-exceptions.filter";
  */
 export function configureApp(app: INestApplication): void {
 	app.setGlobalPrefix("api/v1");
+	// `app.set('trust proxy', 1)` MUST run BEFORE the throttler
+	// (`useGlobalPipes` → `ValidationPipe`) so `req.ip` is resolved
+	// from the X-Forwarded-For header set by the single edge proxy
+	// (Vercel / Cloudflare / Cloudflare tunnel — see design ADR-5).
+	// The throttler reads `req.ip` to scope its per-IP rate limit;
+	// without this every request looks like it comes from the proxy
+	// itself and the entire public surface throttles as one IP.
+	// The value `1` is the single-hop trust (one proxy in front).
+	// The cast is required because INestApplication does not
+	// re-export Express's `set` method (it lives on the
+	// underlying http server); the runtime contract is identical.
+	(app as unknown as { set: (k: string, v: number) => void }).set(
+		"trust proxy",
+		1,
+	);
 	// `cookieParser()` populates `req.cookies` so the auth controller
 	// can read the `rt` refresh token from the HttpOnly cookie. Without
 	// it `req.cookies` is `undefined` and refresh/logout always 401.
