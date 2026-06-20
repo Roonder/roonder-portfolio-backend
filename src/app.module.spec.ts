@@ -210,4 +210,39 @@ describe("AppModule", () => {
 		// import, that is the first step toward the forbidden wiring.
 		expect(source).not.toMatch(/AllExceptionsFilter/);
 	});
+
+	// --- reviews-throttling (T6): ThrottlerModule + APP_GUARD guard-rail
+
+	it("AppModule registers ThrottlerModule.forRootAsync with ConfigService injection", () => {
+		// Per reviews-throttling spec scenario
+		// "ThrottlerModule is registered in AppModule". The factory
+		// reads REVIEWS_THROTTLE_TTL_MS / _WRITE_LIMIT / _READ_LIMIT
+		// via the typed ConfigService<EnvConfig> and returns a single
+		// tracker. The static assertion below checks the wiring; the
+		// runtime test (T16 e2e) exercises the 429 path.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).toMatch(/ThrottlerModule\.forRootAsync/);
+		expect(source).toMatch(/inject:\s*\[ConfigService\]/);
+		expect(source).toMatch(
+			/useFactory.*ConfigService<EnvConfig>/s,
+		);
+		expect(source).toMatch(/REVIEWS_THROTTLE_TTL_MS/);
+		expect(source).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
+	});
+
+	it("AppModule does NOT register ThrottlerGuard as a global APP_GUARD (per-route only)", () => {
+		// Per reviews-throttling spec scenario
+		// "ThrottlerGuard is NOT registered as APP_GUARD". A global
+		// guard would force every public route to opt out and would
+		// trip the per-route contract. The static assertion is the
+		// guard rail.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).not.toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+	});
 });
