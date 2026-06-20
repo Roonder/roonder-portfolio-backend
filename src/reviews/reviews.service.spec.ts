@@ -519,3 +519,238 @@ describe("ReviewsService.remove (T8c)", () => {
 		expect(commentsRepo.delete).not.toHaveBeenCalled();
 	});
 });
+
+// ---------------------------------------------------------------------------
+// T13: addComment + findApprovedCommentsByReviewId. The asymmetric
+// existence-leak guard (ADR-11) is the central design decision this
+// task implements:
+//   - addComment        → 404 ONLY on missing parent (lets the
+//                          comment land on unapproved parents so the
+//                          admin can approve both at once).
+//   - findApproved...   → 404 on missing OR unapproved parent
+//                          (the body is BYTE-EQUAL for both — the
+//                          existence-leak guard).
+// ---------------------------------------------------------------------------
+
+const PARENT_APPROVED = {
+	id: "r-parent-approved",
+	isApproved: true,
+};
+const PARENT_UNAPPROVED = {
+	id: "r-parent-unapproved",
+	isApproved: false,
+};
+
+interface CommentDeps {
+	reviews: {
+		findOne: jest.Mock;
+	};
+	comments: {
+		create: jest.Mock;
+		save: jest.Mock;
+		findAndCount: jest.Mock;
+	};
+}
+
+function makeCommentDeps(parent: typeof PARENT_APPROVED | null): {
+	deps: CommentDeps;
+	commentRepo: {
+		findAndCount: jest.Mock;
+	};
+} {
+	const reviews = {
+		findOne: jest.fn().mockResolvedValue(parent),
+	};
+	const commentRepo = {
+		findAndCount: jest.fn().mockResolvedValue([[], 0]),
+	};
+	const comments = {
+		create: jest.fn((dto: unknown) => dto),
+		save: jest.fn((row: { id?: string }) =>
+			Promise.resolve({ id: "c-new", ...row }),
+		),
+		findAndCount: commentRepo.findAndCount,
+	};
+	return {
+		deps: { reviews, comments },
+		commentRepo,
+	};
+}
+
+async function buildServiceForComment(
+	parent: typeof PARENT_APPROVED | null,
+): Promise<{
+	service: ReviewsService;
+	deps: CommentDeps;
+}> {
+	const { deps } = makeCommentDeps(parent);
+	const module: TestingModule = await Test.createTestingModule({
+		providers: [
+			ReviewsService,
+			{
+				provide: getRepositoryToken(ReviewEntity),
+				useValue: deps.reviews,
+			},
+			{
+				provide: getRepositoryToken(ReviewCommentEntity),
+				useValue: deps.comments,
+			},
+		],
+	}).compile();
+	return { service: module.get(ReviewsService), deps };
+}
+
+describe("ReviewsService.addComment (T13)", () => {
+	it("persists with isApproved=false on a happy-path insert", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		const out = await service.addComment("r-parent-approved", {
+			content: "Agree, well done",
+		});
+		expect(deps.comments.create).toHaveBeenCalledWith({
+			reviewId: "r-parent-approved",
+			authorName: "Anónimo",
+			content: "Agree, well done",
+			isApproved: false,
+		});
+		expect(deps.comments.save).toHaveBeenCalledTimes(1);
+		expect(out).toEqual(
+			expect.objectContaining({
+				id: "c-new",
+				reviewId: "r-parent-approved",
+				isApproved: false,
+				content: "Agree, well done",
+			}),
+		);
+	});
+
+	it("uses the provided authorName when supplied", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		await service.addComment("r-parent-approved", {
+			authorName: "Pedro",
+			content: "Agree, well done",
+		});
+		expect(deps.comments.create).toHaveBeenCalledWith({
+			reviewId: "r-parent-approved",
+			authorName: "Pedro",
+			content: "Agree, well done",
+			isApproved: false,
+		});
+	});
+
+	it("does NOT 404 on an unapproved parent (asymmetric existence-leak guard, ADR-11)", async () => {
+		// The asymmetric guard: addComment accepts unapproved parents
+		// so a user can comment on a pending review. The 404 fires
+		// ONLY when the parent row is missing entirely.
+		const { service } = await buildServiceForComment(PARENT_UNAPPROVED);
+		await expect(
+			service.addComment("r-parent-unapproved", { content: "Pending" }),
+		).resolves.toBeDefined();
+	});
+
+	it("throws NotFoundException on a missing parent (404 existence-leak guard)", async () => {
+		const { service } = await buildServiceForComment(null);
+		await expect(
+			service.addComment("missing", { content: "Hello" }),
+		).rejects.toBeInstanceOf(NotFoundException);
+	});
+});
+
+describe("ReviewsService.findApprovedCommentsByReviewId (T13)", () => {
+	it("returns the envelope shape { data, total, page, pageSize } on a happy path", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		const out = await service.findApprovedCommentsByReviewId(
+			"r-parent-approved",
+			{},
+		);
+		expect(out).toHaveProperty("data");
+		expect(out).toHaveProperty("total");
+		expect(out).toHaveProperty("page");
+		expect(out).toHaveProperty("pageSize");
+		// The query was filtered to the review's id + isApproved=true.
+		expect(deps.comments.findAndCount).toHaveBeenCalledWith(
+			expect.objectContaining({
+				where: { reviewId: "r-parent-approved", isApproved: true },
+			}),
+		);
+	});
+
+	it("applies page=1 and pageSize=20 defaults when query is empty", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		const out = await service.findApprovedCommentsByReviewId(
+			"r-parent-approved",
+			{},
+		);
+		expect(deps.comments.findAndCount).toHaveBeenCalledWith(
+			expect.objectContaining({
+				skip: 0,
+				take: 20,
+			}),
+		);
+		expect(out.page).toBe(1);
+		expect(out.pageSize).toBe(20);
+	});
+
+	it("respects explicit page and pageSize from the query", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		const out = await service.findApprovedCommentsByReviewId(
+			"r-parent-approved",
+			{ page: 2, pageSize: 5 },
+		);
+		expect(deps.comments.findAndCount).toHaveBeenCalledWith(
+			expect.objectContaining({
+				skip: 5,
+				take: 5,
+			}),
+		);
+		expect(out.page).toBe(2);
+		expect(out.pageSize).toBe(5);
+	});
+
+	it("silently clamps pageSize > 100 to 100", async () => {
+		const { service, deps } = await buildServiceForComment(PARENT_APPROVED);
+		const out = await service.findApprovedCommentsByReviewId(
+			"r-parent-approved",
+			{ pageSize: 500 },
+		);
+		expect(deps.comments.findAndCount).toHaveBeenCalledWith(
+			expect.objectContaining({
+				take: 100,
+			}),
+		);
+		expect(out.pageSize).toBe(100);
+	});
+
+	it("throws NotFoundException on a missing parent (existence-leak guard, ADR-11)", async () => {
+		const { service } = await buildServiceForComment(null);
+		await expect(
+			service.findApprovedCommentsByReviewId("missing", {}),
+		).rejects.toBeInstanceOf(NotFoundException);
+	});
+
+	it("throws NotFoundException on an UNAPPROVED parent with the SAME body as the missing-parent 404 (existence-leak guard, ADR-11)", async () => {
+		// The asymmetric guard: the public list 404s on missing
+		// OR unapproved parent with BYTE-EQUAL bodies. The byte
+		// equality is the spec scenario "Public comments list
+		// 404s on unapproved parent (no existence leak)" — the
+		// test asserts the SAME NotFoundException message +
+		// status is thrown in both cases.
+		const { service: missingService } = await buildServiceForComment(null);
+		const { service: unapprovedService } =
+			await buildServiceForComment(PARENT_UNAPPROVED);
+		const missingErr = await missingService
+			.findApprovedCommentsByReviewId("missing", {})
+			.catch((e: unknown) => e);
+		const unapprovedErr = await unapprovedService
+			.findApprovedCommentsByReviewId("r-parent-unapproved", {})
+			.catch((e: unknown) => e);
+		expect(missingErr).toBeInstanceOf(NotFoundException);
+		expect(unapprovedErr).toBeInstanceOf(NotFoundException);
+		// Byte-equal message — the existence-leak guard. A
+		// client cannot tell apart "review doesn't exist" from
+		// "review exists but is unapproved" by inspecting the
+		// 404 body.
+		expect((missingErr as NotFoundException).message).toBe(
+			(unapprovedErr as NotFoundException).message,
+		);
+	});
+});

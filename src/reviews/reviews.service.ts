@@ -6,7 +6,13 @@ import { ReviewCommentEntity } from "./entities/review-comment.entity";
 import { CreateReviewDto } from "./dto/create-review.dto";
 import { ListReviewsQueryDto } from "./dto/list-reviews-query.dto";
 import { ListReviewsResult } from "./dto/list-reviews-response.dto";
-import { toReviewResponse } from "./review-response.mapper";
+import { CreateReviewCommentDto } from "./dto/create-review-comment.dto";
+import { ListCommentsQueryDto } from "./dto/list-comments-query.dto";
+import { ListCommentsResponseDto } from "./dto/list-comments-response.dto";
+import {
+	toReviewResponse,
+	toReviewCommentResponse,
+} from "./review-response.mapper";
 
 /**
  * Reviews domain service.
@@ -169,62 +175,88 @@ export class ReviewsService {
 		}
 	}
 
-	// --- T13: comment methods (placeholders) --------------------------
+	// --- T13: comment methods ----------------------------------------
 
 	/**
-	 * `POST /api/v1/reviews/:id/comments` — adds a comment. 404 on
-	 * missing parent; does NOT 404 on unapproved parent (asymmetric
-	 * existence-leak guard, ADR-11). Lands in T13.
+	 * `POST /api/v1/reviews/:id/comments` — adds a comment.
+	 *
+	 * Pre-checks the parent's existence via
+	 * `this.reviews.findOne({ where: { id: reviewId } })`. If the
+	 * parent is missing → `NotFoundException("Review not found")`.
+	 *
+	 * **Asymmetric existence-leak guard (ADR-11)**: this method
+	 * does NOT 404 on an unapproved parent. The user can comment
+	 * on a pending review; the comment is persisted with
+	 * `isApproved: false` (locked #3) and the admin can approve
+	 * both at once. The complementary `findApprovedCommentsByReviewId`
+	 * DOES 404 on unapproved parents (the asymmetric counterpart).
+	 *
+	 * Returns the response DTO via `toReviewCommentResponse` (the
+	 * 6-field shape from `ReviewCommentResponseDto`, T12).
 	 */
-	addComment(
-		_reviewId: string,
-		_dto: CreateReviewCommentDtoShape,
-	): Promise<ReturnType<typeof toReviewResponse>> {
-		return Promise.resolve({
-			id: "",
-			authorName: "",
-			authorRole: null,
-			content: "",
-			rating: 0,
+	async addComment(
+		reviewId: string,
+		dto: CreateReviewCommentDto,
+	): Promise<ReturnType<typeof toReviewCommentResponse>> {
+		const parent = await this.reviews.findOne({
+			where: { id: reviewId },
+			select: { id: true },
+		});
+		if (!parent) {
+			throw new NotFoundException("Review not found");
+		}
+		const row = this.comments.create({
+			reviewId,
+			authorName: dto.authorName ?? "Anónimo",
+			content: dto.content,
 			isApproved: false,
-			createdAt: new Date(),
-			comments: [],
 		});
+		const saved = await this.comments.save(row);
+		return toReviewCommentResponse(saved);
 	}
 
 	/**
-	 * `GET /api/v1/reviews/:id/comments` — paginated approved comments.
-	 * 404 on missing OR unapproved parent (existence-leak guard).
-	 * Lands in T13.
+	 * `GET /api/v1/reviews/:id/comments` — paginated approved
+	 * comments. The list is filtered to `isApproved: true` at the
+	 * query level (per ADR-7).
+	 *
+	 * **Existence-leak guard (ADR-11)**: pre-checks the parent's
+	 * existence AND `isApproved` status. If the parent is
+	 * missing OR `isApproved: false` →
+	 * `NotFoundException("Review not found")` with the SAME
+	 * message for both cases (byte-equal — the test asserts
+	 * this). A client cannot tell apart "review doesn't exist"
+	 * from "review exists but is unapproved" by inspecting the
+	 * 404 body.
+	 *
+	 * `pageSize > 100` is silently clamped (mirrors
+	 * `findAllApproved`). The DTO's `@Max(100)` is the
+	 * wire-level guard.
 	 */
-	findApprovedCommentsByReviewId(
-		_reviewId: string,
-		_query: ListCommentsQueryDtoShape,
-	): Promise<ListCommentsResultShape> {
-		return Promise.resolve({
-			data: [],
-			total: 0,
-			page: 1,
-			pageSize: 20,
+	async findApprovedCommentsByReviewId(
+		reviewId: string,
+		query: ListCommentsQueryDto,
+	): Promise<ListCommentsResponseDto> {
+		const parent = await this.reviews.findOne({
+			where: { id: reviewId },
+			select: { id: true, isApproved: true },
 		});
+		if (!parent || !parent.isApproved) {
+			throw new NotFoundException("Review not found");
+		}
+		const page = query.page ?? 1;
+		const pageSize = Math.min(query.pageSize ?? 20, 100);
+		const [rows, total] = await this.comments.findAndCount({
+			where: { reviewId, isApproved: true },
+			order: { createdAt: "DESC" },
+			skip: (page - 1) * pageSize,
+			take: pageSize,
+		});
+		return {
+			data: rows.map(toReviewCommentResponse),
+			total,
+			page,
+			pageSize,
+		};
 	}
-}
-
-// Local structural types for the T13 comment methods. The
-// `CreateReviewCommentDto` + `ListCommentsQueryDto` DTOs are
-// added in T12; the service is forward-compatible with the
-// structural types until T12 lands.
-interface CreateReviewCommentDtoShape {
-	authorName?: string;
-	content: string;
-}
-interface ListCommentsQueryDtoShape {
-	page?: number;
-	pageSize?: number;
-}
-interface ListCommentsResultShape {
-	data: Array<{ id: string }>;
-	total: number;
-	page: number;
-	pageSize: number;
 }
