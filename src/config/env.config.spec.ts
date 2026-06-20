@@ -69,4 +69,53 @@ describe("EnvConfig Joi schema", () => {
 		// Joi.valid() emits a `any.only` error code.
 		expect(result.error?.message).toMatch(/NODE_ENV/);
 	});
+
+	// --- reviews-throttling: Configurable Limits via Joi (T1) -----------
+
+	it("applies the default REVIEWS_THROTTLE_TTL_MS (60_000) when env var is absent", () => {
+		const result = ENV_CONFIG.validate({ ...baseValidEnv });
+		expect(result.error).toBeUndefined();
+		expect((result.value as EnvConfig).REVIEWS_THROTTLE_TTL_MS).toBe(60_000);
+	});
+
+	it("round-trips an explicit REVIEWS_THROTTLE_TTL_MS / _WRITE_LIMIT / _READ_LIMIT triple", () => {
+		const result = ENV_CONFIG.validate({
+			...baseValidEnv,
+			REVIEWS_THROTTLE_TTL_MS: "30000",
+			REVIEWS_THROTTLE_WRITE_LIMIT: "10",
+			REVIEWS_THROTTLE_READ_LIMIT: "120",
+		});
+		expect(result.error).toBeUndefined();
+		const v = result.value as EnvConfig;
+		expect(v.REVIEWS_THROTTLE_TTL_MS).toBe(30_000);
+		expect(v.REVIEWS_THROTTLE_WRITE_LIMIT).toBe(10);
+		expect(v.REVIEWS_THROTTLE_READ_LIMIT).toBe(120);
+	});
+
+	it("rejects REVIEWS_THROTTLE_TTL_MS below the 1_000 floor (e.g. 500)", () => {
+		const result = ENV_CONFIG.validate({
+			...baseValidEnv,
+			REVIEWS_THROTTLE_TTL_MS: "500",
+		});
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toMatch(/REVIEWS_THROTTLE_TTL_MS/);
+	});
+
+	it("rejects REVIEWS_THROTTLE_WRITE_LIMIT below the 1 floor (e.g. 0)", () => {
+		const result = ENV_CONFIG.validate({
+			...baseValidEnv,
+			REVIEWS_THROTTLE_WRITE_LIMIT: "0",
+		});
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
+	});
+
+	it("rejects a non-integer REVIEWS_THROTTLE_READ_LIMIT", () => {
+		const result = ENV_CONFIG.validate({
+			...baseValidEnv,
+			REVIEWS_THROTTLE_READ_LIMIT: "fast",
+		});
+		expect(result.error).toBeDefined();
+		expect(result.error?.message).toMatch(/REVIEWS_THROTTLE_READ_LIMIT/);
+	});
 });

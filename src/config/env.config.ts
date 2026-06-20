@@ -16,6 +16,13 @@ export interface EnvConfig {
 	// keeps the field present at runtime; the optional `?` in the
 	// interface reflects the fact that the env var is NOT required.
 	NODE_ENV?: string;
+	// reviews-throttling (T1): the three knobs that tune
+	// `@nestjs/throttler` at boot. Floors prevent the operator from
+	// accidentally setting a zero-millisecond window (TTL < 1_000) or
+	// a zero-limit (limit < 1). Defaults match the spec proposal.
+	REVIEWS_THROTTLE_TTL_MS: number;
+	REVIEWS_THROTTLE_WRITE_LIMIT: number;
+	REVIEWS_THROTTLE_READ_LIMIT: number;
 }
 
 export const ENV_CONFIG = Joi.object<EnvConfig>({
@@ -41,4 +48,21 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	NODE_ENV: Joi.string()
 		.valid("development", "test", "production")
 		.default("development"),
+	// reviews-throttling: throttler configuration (T1, ADR-3 / ADR-4).
+	// `min(1_000)` on the TTL prevents a zero-millisecond window; the
+	// limit floors prevent the operator from accidentally disabling the
+	// throttler via a 0 (the documented "disable" knob is to set the
+	// limit to 1_000_000 — see the README).
+	REVIEWS_THROTTLE_TTL_MS: Joi.number()
+		.integer()
+		.min(1_000)
+		.default(60_000),
+	REVIEWS_THROTTLE_WRITE_LIMIT: Joi.number()
+		.integer()
+		.min(1)
+		.default(5),
+	REVIEWS_THROTTLE_READ_LIMIT: Joi.number()
+		.integer()
+		.min(1)
+		.default(60),
 });

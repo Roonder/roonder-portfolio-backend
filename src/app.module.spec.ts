@@ -10,6 +10,12 @@ process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
+// reviews-throttling (T1): the three new Joi keys. Values are
+// permissive (1_000_000) so the throttler is a no-op in the unit
+// suite.
+process.env.REVIEWS_THROTTLE_TTL_MS = "1000";
+process.env.REVIEWS_THROTTLE_WRITE_LIMIT = "1000000";
+process.env.REVIEWS_THROTTLE_READ_LIMIT = "1000000";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module

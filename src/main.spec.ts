@@ -10,6 +10,11 @@ process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
+// reviews-throttling (T1): the three new Joi keys, permissive for
+// the unit suite.
+process.env.REVIEWS_THROTTLE_TTL_MS = "1000";
+process.env.REVIEWS_THROTTLE_WRITE_LIMIT = "1000000";
+process.env.REVIEWS_THROTTLE_READ_LIMIT = "1000000";
 
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
