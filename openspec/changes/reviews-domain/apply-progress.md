@@ -12,3 +12,4 @@
 - [x] T4 — register ReviewEntity + ReviewCommentEntity in AppDataSource — fb1cd6c — 24 + 2
 - [x] T5 — review-response.mapper (toReviewResponse + toReviewCommentResponse) — 5acfa60 — 64 + 105
 - [x] T6 — ThrottlerModule.forRootAsync + ThrottledWrite/Read decorator factory — 4c50315 — 35 + 159
+- [x] T7 — CreateReviewDto + ListReviewsQueryDto + ReviewResponseDto + envelope — a6468d6 — 110 + 219
