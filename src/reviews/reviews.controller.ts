@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Post, Query } from "@nestjs/common";
+import {
+	Body,
+	Controller,
+	Get,
+	Param,
+	ParseUUIDPipe,
+	Post,
+	Query,
+} from "@nestjs/common";
 import { ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { ThrottledRead, ThrottledWrite } from "./throttle.decorator";
 import { ReviewsService } from "./reviews.service";
@@ -9,6 +17,10 @@ import {
 	ListReviewsResponseDto,
 	ListReviewsResult,
 } from "./dto/list-reviews-response.dto";
+import { CreateReviewCommentDto } from "./dto/create-review-comment.dto";
+import { ListCommentsQueryDto } from "./dto/list-comments-query.dto";
+import { ReviewCommentResponseDto } from "./dto/review-comment-response.dto";
+import { ListCommentsResponseDto } from "./dto/list-comments-response.dto";
 
 /**
  * Public Reviews surface.
@@ -74,5 +86,49 @@ export class ReviewsController {
 		@Query() query: ListReviewsQueryDto,
 	): Promise<ListReviewsResult> {
 		return this.reviews.findAllApproved(query);
+	}
+
+	@Post(":id/comments")
+	@ThrottledWrite()
+	@ApiOperation({
+		summary:
+			"Add a comment to a review (public, persists with isApproved=false)",
+	})
+	@ApiResponse({
+		status: 201,
+		description: "The created comment body (isApproved=false)",
+		type: ReviewCommentResponseDto,
+	})
+	@ApiResponse({ status: 400, description: "Invalid body or id (non-uuid)" })
+	@ApiResponse({ status: 404, description: "Parent review not found" })
+	@ApiResponse({ status: 429, description: "Throttled" })
+	addComment(
+		@Param("id", ParseUUIDPipe) id: string,
+		@Body() dto: CreateReviewCommentDto,
+	): Promise<ReviewCommentResponseDto> {
+		return this.reviews.addComment(id, dto);
+	}
+
+	@Get(":id/comments")
+	@ThrottledRead()
+	@ApiOperation({
+		summary:
+			"List approved comments for a review (public, paginated, filterable)",
+	})
+	@ApiResponse({
+		status: 200,
+		description: "Envelope of approved comments for the review",
+		type: ListCommentsResponseDto,
+	})
+	@ApiResponse({ status: 400, description: "Invalid id (non-uuid) or query" })
+	@ApiResponse({
+		status: 404,
+		description: "Review not found (or unapproved)",
+	})
+	findApprovedCommentsByReviewId(
+		@Param("id", ParseUUIDPipe) id: string,
+		@Query() query: ListCommentsQueryDto,
+	): Promise<ListCommentsResponseDto> {
+		return this.reviews.findApprovedCommentsByReviewId(id, query);
 	}
 }
