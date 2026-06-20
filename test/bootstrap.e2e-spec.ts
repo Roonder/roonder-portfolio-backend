@@ -42,6 +42,7 @@ import { IsString } from "class-validator";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { getRepositoryToken } from "@nestjs/typeorm";
+import { DataSource } from "typeorm";
 import request from "supertest";
 import type { App } from "supertest/types";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
@@ -51,18 +52,29 @@ import { ReviewsModule } from "../src/reviews/reviews.module";
 import { ContactModule } from "../src/contact/contact.module";
 import { UserEntity } from "../src/auth/entities/user.entity";
 import { RefreshTokenEntity } from "../src/auth/entities/refresh-token.entity";
+import { ProjectEntity } from "../src/projects/entities/project.entity";
+import { ProjectUrlEntity } from "../src/projects/entities/project-url.entity";
 import { ENV_CONFIG, EnvConfig } from "../src/config/env.config";
 
 // Fakes for the @InjectRepository() deps. TypeOrmModule is mocked at the
 // top of this file so the repository providers must be supplied by hand
-// through a @Global() test module so AuthService can be resolved inside
-// AuthModule (its parent module).
+// through a @Global() test module so AuthService / ProjectsService can
+// be resolved inside AuthModule / ProjectsModule (their parent modules).
 const fakeUserRepo = { findOne: jest.fn(), save: jest.fn() };
 const fakeRefreshTokenRepo = {
 	findOne: jest.fn(),
 	insert: jest.fn(),
 	update: jest.fn(),
 };
+// PR3 carryover fix: the projects module was added in PR2 (Tasks 2.2 +
+// 2.9) but its repository tokens were never added to this e2e harness.
+// Without them, Test.createTestingModule fails to compile because
+// ProjectsService's constructor can't be resolved. Empty fakes are
+// sufficient here — this spec never exercises the projects endpoints;
+// the endpoint-level e2e lives in test/projects.e2e-spec.ts.
+const fakeProjectRepo = {};
+const fakeProjectUrlRepo = {};
+const fakeDataSource = {};
 
 @Global()
 @Module({
@@ -72,10 +84,22 @@ const fakeRefreshTokenRepo = {
 			provide: getRepositoryToken(RefreshTokenEntity),
 			useValue: fakeRefreshTokenRepo,
 		},
+		{
+			provide: getRepositoryToken(ProjectEntity),
+			useValue: fakeProjectRepo,
+		},
+		{
+			provide: getRepositoryToken(ProjectUrlEntity),
+			useValue: fakeProjectUrlRepo,
+		},
+		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
 		getRepositoryToken(UserEntity),
 		getRepositoryToken(RefreshTokenEntity),
+		getRepositoryToken(ProjectEntity),
+		getRepositoryToken(ProjectUrlEntity),
+		DataSource,
 	],
 })
 class TestFakesModule {}
