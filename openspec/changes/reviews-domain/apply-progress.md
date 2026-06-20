@@ -10,3 +10,4 @@
 - [x] T2 — ReviewEntity + ReviewCommentEntity + 2 entity specs — 6581d54 — 130 + 192
 - [x] T3 — migration create-reviews-and-review-comments (FK CASCADE + 3 indexes + ADD COLUMN IF NOT EXISTS) — cd34688 — 91 + 0 (TDD-exempt: SQL is the artifact)
 - [x] T4 — register ReviewEntity + ReviewCommentEntity in AppDataSource — fb1cd6c — 24 + 2
+- [x] T5 — review-response.mapper (toReviewResponse + toReviewCommentResponse) — 5acfa60 — 64 + 105
