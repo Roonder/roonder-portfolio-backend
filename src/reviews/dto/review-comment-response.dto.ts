@@ -6,13 +6,10 @@ import { ApiProperty } from "@nestjs/swagger";
  *   - `id`, `reviewId`, `authorName`, `content`,
  *     `isApproved`, `createdAt`.
  *
- * NOTE: This is the minimal stub added in T11 to unblock the
- * build. The `T12` task replaces this with the full
- * `ReviewCommentResponseDto` deliverable + the
- * `create-review-comment.dto.spec.ts` +
- * `list-comments-query.dto.spec.ts` + the comment list envelope
- * + the 4 DTOs that share this file's neighbors. The T12 commit
- * will overwrite this file with the final version.
+ * `isApproved` is included so a future admin moderation queue
+ * can render the flag without a second round-trip. Public
+ * readers always see `isApproved: true` on returned rows (the
+ * service filters at the query level per ADR-7 + ADR-11).
  */
 export class ReviewCommentResponseDto {
 	@ApiProperty({ format: "uuid" })
