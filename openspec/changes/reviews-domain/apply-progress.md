@@ -16,3 +16,4 @@
 - [x] T8a — ReviewsService v1 (constructor + create) with isApproved=false default — 5a65ffe — 70 + 203
 - [x] T8b — ReviewsService.findAllApproved + findAllForAdmin (isApproved filter + 100-clamp + envelope) — efba832 — 56 + 199
 - [x] T8c — ReviewsService.toggleApproval + remove (NotFoundException 404 + FK CASCADE contract) — 3a398ce — 27 + 188
+- [x] T9 — ReviewsController v1 (POST + GET /reviews with throttling, no +id bug) — 1799d9b — 89 + 264
