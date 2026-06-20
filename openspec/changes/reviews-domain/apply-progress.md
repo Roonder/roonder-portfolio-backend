@@ -20,3 +20,4 @@
 - [x] T10 — ReviewsAdminController (3 protected routes, class-level JwtAuthGuard, no throttler) — 5ad2d6b — 96 + 248
 - [x] T11 — ReviewsModule wire (forFeature + 2 controllers + service export) + TestFakesModule extension — 702dedd — 56 + 134
 - [x] T12 — comment DTOs (Create + ListQuery + ReviewCommentResponse + envelope) + 4 specs — ebc1fed — 76 + 124
+- [x] T13 — ReviewsService.addComment + findApprovedCommentsByReviewId (asymmetric existence-leak guard) — 0c381cf — 117 + 246
