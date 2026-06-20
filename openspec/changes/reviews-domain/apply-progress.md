@@ -27,3 +27,4 @@
 - [x] T16b — e2e admin routes (5 list + 5 toggle + 4 delete + 1 filter) + FK CASCADE contract — b673710 — 0 + 277
 - [x] T16c — e2e comment routes (7 add + 3 list + 3 throttler-shape) + asymmetric existence-leak — 239689b — 0 + 422
 - [x] T17 — seed-reviews.ts CLI with SEED_DRY_RUN (3 approved + 2 pending reviews, comments isApproved: false) — 2e93bdb — 220 + 200
+- [x] T18 — README endpoints table (7 routes) + throttler section (3 env vars + disable knob) — 6fa7f95 — 32 + 8
