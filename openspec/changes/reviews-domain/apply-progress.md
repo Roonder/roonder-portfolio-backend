@@ -22,3 +22,4 @@
 - [x] T12 — comment DTOs (Create + ListQuery + ReviewCommentResponse + envelope) + 4 specs — ebc1fed — 76 + 124
 - [x] T13 — ReviewsService.addComment + findApprovedCommentsByReviewId (asymmetric existence-leak guard) — 0c381cf — 117 + 246
 - [x] T14 — ReviewsController comment routes (POST + GET /:id/comments, throttled + ParseUUIDPipe) — 4ef276a — 76 + 105
+- [x] T15 — delete update-review.dto.ts + app.set('trust proxy', 1) in main.ts + 3 spec extensions (filter 429 + trust proxy + entities guard) — 9bdec4b — 60 + 53
