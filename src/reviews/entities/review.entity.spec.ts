@@ -13,9 +13,7 @@ import { ReviewCommentEntity } from "./review-comment.entity";
  */
 describe("ReviewEntity metadata", () => {
 	const metadata = getMetadataArgsStorage();
-	const reviewTable = metadata.tables.find(
-		(t) => t.target === ReviewEntity,
-	);
+	const reviewTable = metadata.tables.find((t) => t.target === ReviewEntity);
 	const columnNames = reviewTable
 		? metadata.columns
 				.filter((c) => c.target === ReviewEntity)
@@ -96,9 +94,7 @@ describe("ReviewEntity metadata", () => {
 		expect(columnsByName.get("isApproved")?.options.name).toBe(
 			"is_approved",
 		);
-		expect(columnsByName.get("createdAt")?.options.name).toBe(
-			"created_at",
-		);
+		expect(columnsByName.get("createdAt")?.options.name).toBe("created_at");
 	});
 
 	it("rating is an integer (NOT NULL) — no DB CHECK, per ADR-9 (DTO only)", () => {
@@ -135,11 +131,14 @@ describe("ReviewEntity metadata", () => {
 		);
 		const toUser = relations.find((r) => {
 			if (r.relationType !== "many-to-one") return false;
-			const type = r.type;
+			const type = r.type as unknown;
 			if (typeof type === "function") {
-				return type().name === "UserEntity";
+				return (type as () => { name: string })().name === "UserEntity";
 			}
-			return type?.name === "UserEntity";
+			if (type && typeof type === "object" && "name" in type) {
+				return (type as { name: string }).name === "UserEntity";
+			}
+			return false;
 		});
 		expect(toUser).toBeUndefined();
 	});
