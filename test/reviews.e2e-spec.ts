@@ -45,6 +45,7 @@ import "reflect-metadata";
 import { Global, INestApplication, Module } from "@nestjs/common";
 import { Test, TestingModule } from "@nestjs/testing";
 import { ConfigModule } from "@nestjs/config";
+import { JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { DataSource } from "typeorm";
 import request from "supertest";
@@ -495,6 +496,282 @@ describe("Reviews e2e — public review routes (T16a)", () => {
 			for (const r of body.data) {
 				expect(r.rating).toBe(5);
 			}
+		});
+	});
+});
+
+// ---------------------------------------------------------------------------
+// T16b: admin routes (list, toggle approval, delete) + filter shape.
+// Tests need a valid JWT for the class-level JwtAuthGuard on
+// ReviewsAdminController. The JwtService is instantiated directly with
+// the test secret (mirror test/auth.e2e-spec.ts:342-345).
+// ---------------------------------------------------------------------------
+
+async function mintAdminToken(): Promise<string> {
+	const jwt = new JwtService({
+		secret: "test-secret-32-chars-min-..................",
+		signOptions: { expiresIn: "15m" },
+	});
+	return jwt.signAsync({ sub: "test-admin-id", email: "admin@test.io" });
+}
+
+describe("Reviews e2e — admin routes (T16b)", () => {
+	let app: INestApplication;
+	let adminToken: string;
+
+	beforeEach(async () => {
+		reviewState.rows.clear();
+		reviewRepo.create.mockClear();
+		reviewRepo.save.mockClear();
+		reviewRepo.findOne.mockClear();
+		reviewRepo.delete.mockClear();
+		// The comments repo's delete is the FK CASCADE contract
+		// assertion. Spy on it so the T16b test can verify the
+		// admin DELETE route NEVER calls it.
+		commentRepo.delete.mockClear();
+		reviewRepo.createQueryBuilder.mockImplementation(() => {
+			const { qb } = makeQueryBuilder(reviewState.rows.values());
+			return qb;
+		});
+		app = await bootstrapTestApp();
+		adminToken = await mintAdminToken();
+	});
+
+	afterEach(async () => {
+		if (app) await app.close();
+	});
+
+	describe("GET /api/v1/admin/reviews", () => {
+		beforeEach(() => {
+			// Seed 2 approved + 1 unapproved.
+			reviewState.rows.set("r-1", {
+				id: "r-1",
+				authorName: "Maria",
+				authorRole: null,
+				content: "Approved A",
+				rating: 5,
+				isApproved: true,
+				createdAt: new Date("2026-06-19T10:00:00.000Z"),
+			});
+			reviewState.rows.set("r-2", {
+				id: "r-2",
+				authorName: "Pedro",
+				authorRole: null,
+				content: "Approved B",
+				rating: 4,
+				isApproved: true,
+				createdAt: new Date("2026-06-19T11:00:00.000Z"),
+			});
+			reviewState.rows.set("r-3", {
+				id: "r-3",
+				authorName: "Anon",
+				authorRole: null,
+				content: "Pending",
+				rating: 3,
+				isApproved: false,
+				createdAt: new Date("2026-06-19T12:00:00.000Z"),
+			});
+		});
+
+		it("bearer-authenticated admin sees ALL reviews (approved + pending)", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/admin/reviews")
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { data: unknown[]; total: number };
+			expect(body.total).toBe(3);
+			expect(body.data).toHaveLength(3);
+		});
+
+		it("admin filters by ?isApproved=true to see only approved reviews", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/admin/reviews?isApproved=true")
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { data: unknown[]; total: number };
+			expect(body.total).toBe(2);
+		});
+
+		it("admin filters by ?isApproved=false to see only pending reviews", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/admin/reviews?isApproved=false")
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { data: unknown[]; total: number };
+			expect(body.total).toBe(1);
+		});
+
+		it("missing bearer returns 401", async () => {
+			const res = await request(app.getHttpServer() as App).get(
+				"/api/v1/admin/reviews",
+			);
+			expect(res.status).toBe(401);
+		});
+
+		it("invalid bearer returns 401", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.get("/api/v1/admin/reviews")
+				.set("Authorization", "Bearer not-a-valid-jwt");
+			expect(res.status).toBe(401);
+		});
+	});
+
+	describe("PATCH /api/v1/admin/reviews/:id/approve", () => {
+		const PARENT_UUID = "11111111-2222-3333-4444-555555555555";
+
+		beforeEach(() => {
+			reviewState.rows.set(PARENT_UUID, {
+				id: PARENT_UUID,
+				authorName: "Maria",
+				authorRole: null,
+				content: "Pending",
+				rating: 5,
+				isApproved: false,
+				createdAt: new Date("2026-06-19T10:00:00.000Z"),
+			});
+		});
+
+		it("bearer + valid uuid flips isApproved from false to true", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.patch(`/api/v1/admin/reviews/${PARENT_UUID}/approve`)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { isApproved?: boolean };
+			expect(body.isApproved).toBe(true);
+			// Persisted state is the flipped value.
+			expect(reviewState.rows.get(PARENT_UUID)?.isApproved).toBe(true);
+		});
+
+		it("toggling twice is idempotent (returns to original value)", async () => {
+			// First toggle: false → true.
+			await request(app.getHttpServer() as App)
+				.patch(`/api/v1/admin/reviews/${PARENT_UUID}/approve`)
+				.set("Authorization", `Bearer ${adminToken}`);
+			// Second toggle: true → false.
+			const res = await request(app.getHttpServer() as App)
+				.patch(`/api/v1/admin/reviews/${PARENT_UUID}/approve`)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(200);
+			const body = res.body as { isApproved?: boolean };
+			expect(body.isApproved).toBe(false);
+		});
+
+		it("missing bearer returns 401", async () => {
+			const res = await request(app.getHttpServer() as App).patch(
+				`/api/v1/admin/reviews/${PARENT_UUID}/approve`,
+			);
+			expect(res.status).toBe(401);
+		});
+
+		it("non-uuid id returns 400 (ParseUUIDPipe)", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.patch("/api/v1/admin/reviews/not-a-uuid/approve")
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(400);
+		});
+
+		it("unknown uuid returns 404 with the canonical envelope", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.patch(
+					"/api/v1/admin/reviews/00000000-0000-0000-0000-000000000000/approve",
+				)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(404);
+			const body = res.body as {
+				statusCode?: number;
+				error?: string;
+				message?: string;
+			};
+			expect(body.statusCode).toBe(404);
+			expect(body.error).toBe("Not Found");
+		});
+	});
+
+	describe("DELETE /api/v1/admin/reviews/:id", () => {
+		const PARENT_UUID = "22222222-2222-3333-4444-555555555555";
+
+		beforeEach(() => {
+			reviewState.rows.set(PARENT_UUID, {
+				id: PARENT_UUID,
+				authorName: "Maria",
+				authorRole: null,
+				content: "To delete",
+				rating: 5,
+				isApproved: true,
+				createdAt: new Date("2026-06-19T10:00:00.000Z"),
+			});
+		});
+
+		it("valid bearer + known id deletes the review (204 + cascade contract)", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.delete(`/api/v1/admin/reviews/${PARENT_UUID}`)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(204);
+			// Row was removed.
+			expect(reviewState.rows.has(PARENT_UUID)).toBe(false);
+		});
+
+		it("does NOT call comments.delete — the FK CASCADE does the work at the DB layer (locked #4 / ADR-8)", async () => {
+			// The service MUST NOT issue a manual comments.delete
+			// call. The DB layer's FK ON DELETE CASCADE handles
+			// the cascade. This assertion is the e2e
+			// executable contract for that lock.
+			await request(app.getHttpServer() as App)
+				.delete(`/api/v1/admin/reviews/${PARENT_UUID}`)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(commentRepo.delete).not.toHaveBeenCalled();
+		});
+
+		it("missing bearer returns 401", async () => {
+			const res = await request(app.getHttpServer() as App).delete(
+				`/api/v1/admin/reviews/${PARENT_UUID}`,
+			);
+			expect(res.status).toBe(401);
+		});
+
+		it("unknown uuid returns 404", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.delete(
+					"/api/v1/admin/reviews/00000000-0000-0000-0000-000000000000",
+				)
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(404);
+		});
+
+		it("non-uuid id returns 400 (ParseUUIDPipe)", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.delete("/api/v1/admin/reviews/not-a-uuid")
+				.set("Authorization", `Bearer ${adminToken}`);
+			expect(res.status).toBe(400);
+		});
+	});
+
+	describe("Filter shape (per ADR-12)", () => {
+		// The throttler-shape tests (3 cases) are in T16c where
+		// the throttler is reconfigured with the spec defaults.
+		// T16b covers the FK CASCADE contract (above) and the
+		// admin route contract. The 1 filter-shape case asserts
+		// the 429 envelope is rendered through the global
+		// AllExceptionsFilter when the throttler triggers.
+		it("filter renders 4xx responses with the canonical envelope", async () => {
+			// Missing bearer → 401 through the global filter.
+			const res = await request(app.getHttpServer() as App).get(
+				"/api/v1/admin/reviews",
+			);
+			expect(res.status).toBe(401);
+			const body = res.body as {
+				statusCode?: number;
+				error?: string;
+				message?: string;
+				path?: string;
+				timestamp?: string;
+			};
+			expect(body).toMatchObject({
+				statusCode: 401,
+				error: "Unauthorized",
+				path: "/api/v1/admin/reviews",
+			});
+			expect(typeof body.timestamp).toBe("string");
 		});
 	});
 });
