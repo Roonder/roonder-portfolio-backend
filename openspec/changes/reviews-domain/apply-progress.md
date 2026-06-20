@@ -15,3 +15,4 @@
 - [x] T7 — CreateReviewDto + ListReviewsQueryDto + ReviewResponseDto + envelope — a6468d6 — 110 + 219
 - [x] T8a — ReviewsService v1 (constructor + create) with isApproved=false default — 5a65ffe — 70 + 203
 - [x] T8b — ReviewsService.findAllApproved + findAllForAdmin (isApproved filter + 100-clamp + envelope) — efba832 — 56 + 199
+- [x] T8c — ReviewsService.toggleApproval + remove (NotFoundException 404 + FK CASCADE contract) — 3a398ce — 27 + 188
