@@ -36,7 +36,11 @@ export class ReviewResponseDto {
 	@ApiProperty()
 	isApproved!: boolean;
 
-	@ApiProperty({ type: [Object], description: "Inline comments (empty on list path; use GET /:id/comments for a paginated list)" })
+	@ApiProperty({
+		type: [Object],
+		description:
+			"Inline comments (empty on list path; use GET /:id/comments for a paginated list)",
+	})
 	comments!: ReviewCommentResponseDto[];
 
 	@ApiProperty({ format: "date-time" })

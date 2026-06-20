@@ -53,16 +53,7 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	// limit floors prevent the operator from accidentally disabling the
 	// throttler via a 0 (the documented "disable" knob is to set the
 	// limit to 1_000_000 — see the README).
-	REVIEWS_THROTTLE_TTL_MS: Joi.number()
-		.integer()
-		.min(1_000)
-		.default(60_000),
-	REVIEWS_THROTTLE_WRITE_LIMIT: Joi.number()
-		.integer()
-		.min(1)
-		.default(5),
-	REVIEWS_THROTTLE_READ_LIMIT: Joi.number()
-		.integer()
-		.min(1)
-		.default(60),
+	REVIEWS_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
+	REVIEWS_THROTTLE_WRITE_LIMIT: Joi.number().integer().min(1).default(5),
+	REVIEWS_THROTTLE_READ_LIMIT: Joi.number().integer().min(1).default(60),
 });

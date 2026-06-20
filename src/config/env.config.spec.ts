@@ -75,7 +75,9 @@ describe("EnvConfig Joi schema", () => {
 	it("applies the default REVIEWS_THROTTLE_TTL_MS (60_000) when env var is absent", () => {
 		const result = ENV_CONFIG.validate({ ...baseValidEnv });
 		expect(result.error).toBeUndefined();
-		expect((result.value as EnvConfig).REVIEWS_THROTTLE_TTL_MS).toBe(60_000);
+		expect((result.value as EnvConfig).REVIEWS_THROTTLE_TTL_MS).toBe(
+			60_000,
+		);
 	});
 
 	it("round-trips an explicit REVIEWS_THROTTLE_TTL_MS / _WRITE_LIMIT / _READ_LIMIT triple", () => {

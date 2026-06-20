@@ -1,12 +1,6 @@
 import { ApiPropertyOptional } from "@nestjs/swagger";
 import { Type, Transform } from "class-transformer";
-import {
-	IsBoolean,
-	IsInt,
-	IsOptional,
-	Max,
-	Min,
-} from "class-validator";
+import { IsBoolean, IsInt, IsOptional, Max, Min } from "class-validator";
 
 /**
  * Query string of `GET /api/v1/reviews` (public). Validated by the

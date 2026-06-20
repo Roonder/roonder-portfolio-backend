@@ -36,9 +36,7 @@ describe("ThrottledWrite", () => {
 		// Assert the factory's bound values via the env-fallback path.
 		// The `@Throttle()` factory at decoration time captures `limit`
 		// and `ttl` as numbers; we mirror the same lookup here.
-		const write = Number(
-			process.env.REVIEWS_THROTTLE_WRITE_LIMIT ?? 5,
-		);
+		const write = Number(process.env.REVIEWS_THROTTLE_WRITE_LIMIT ?? 5);
 		const ttl = Number(process.env.REVIEWS_THROTTLE_TTL_MS ?? 60_000);
 		expect(write).toBe(5);
 		expect(ttl).toBe(60_000);

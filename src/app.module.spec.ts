@@ -226,9 +226,7 @@ describe("AppModule", () => {
 		);
 		expect(source).toMatch(/ThrottlerModule\.forRootAsync/);
 		expect(source).toMatch(/inject:\s*\[ConfigService\]/);
-		expect(source).toMatch(
-			/useFactory.*ConfigService<EnvConfig>/s,
-		);
+		expect(source).toMatch(/useFactory.*ConfigService<EnvConfig>/s);
 		expect(source).toMatch(/REVIEWS_THROTTLE_TTL_MS/);
 		expect(source).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
 	});

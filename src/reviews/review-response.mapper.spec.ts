@@ -1,4 +1,7 @@
-import { toReviewResponse, toReviewCommentResponse } from "./review-response.mapper";
+import {
+	toReviewResponse,
+	toReviewCommentResponse,
+} from "./review-response.mapper";
 import type { ReviewEntity } from "./entities/review.entity";
 import type { ReviewCommentEntity } from "./entities/review-comment.entity";
 
@@ -39,7 +42,10 @@ describe("toReviewResponse", () => {
 	});
 
 	it("comments defaults to [] when the relation is undefined (eager not loaded)", () => {
-		const row = { ...baseRow, comments: undefined } as unknown as ReviewEntity;
+		const row = {
+			...baseRow,
+			comments: undefined,
+		} as unknown as ReviewEntity;
 		const out = toReviewResponse(row);
 		expect(out.comments).toEqual([]);
 	});
@@ -54,9 +60,12 @@ describe("toReviewResponse", () => {
 				isApproved: true,
 				createdAt: new Date("2026-06-19T10:05:00.000Z"),
 				review: baseRow as unknown as ReviewEntity,
-			} as unknown as ReviewCommentEntity,
+			},
 		];
-		const row = { ...baseRow, comments: commentRows } as unknown as ReviewEntity;
+		const row = {
+			...baseRow,
+			comments: commentRows,
+		} as unknown as ReviewEntity;
 		const out = toReviewResponse(row);
 		expect(out.comments).toHaveLength(1);
 		expect(out.comments[0]).toEqual({
@@ -65,7 +74,7 @@ describe("toReviewResponse", () => {
 			authorName: "Pedro",
 			content: "Agree",
 			isApproved: true,
-			createdAt: commentRows[0]!.createdAt,
+			createdAt: commentRows[0].createdAt,
 		});
 	});
 
@@ -87,7 +96,9 @@ describe("toReviewCommentResponse", () => {
 	};
 
 	it("maps all fields from the comment entity to the response DTO", () => {
-		const out = toReviewCommentResponse(baseRow as unknown as ReviewCommentEntity);
+		const out = toReviewCommentResponse(
+			baseRow as unknown as ReviewCommentEntity,
+		);
 		expect(out).toEqual({
 			id: "c-1",
 			reviewId: "r-1",

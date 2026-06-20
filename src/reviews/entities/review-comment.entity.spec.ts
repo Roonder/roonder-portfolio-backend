@@ -86,9 +86,7 @@ describe("ReviewCommentEntity metadata", () => {
 		expect(columnsByName.get("isApproved")?.options.name).toBe(
 			"is_approved",
 		);
-		expect(columnsByName.get("createdAt")?.options.name).toBe(
-			"created_at",
-		);
+		expect(columnsByName.get("createdAt")?.options.name).toBe("created_at");
 	});
 
 	it("declares a @JoinColumn on reviewId named 'review_id'", () => {
