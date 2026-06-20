@@ -24,3 +24,4 @@
 - [x] T14 — ReviewsController comment routes (POST + GET /:id/comments, throttled + ParseUUIDPipe) — 4ef276a — 76 + 105
 - [x] T15 — delete update-review.dto.ts + app.set('trust proxy', 1) in main.ts + 3 spec extensions (filter 429 + trust proxy + entities guard) — 9bdec4b — 60 + 53
 - [x] T16a — e2e harness + 10 public review routes (in-memory review repo + QueryBuilder shim) — b67719c — 0 + 500
+- [x] T16b — e2e admin routes (5 list + 5 toggle + 4 delete + 1 filter) + FK CASCADE contract — b673710 — 0 + 277
