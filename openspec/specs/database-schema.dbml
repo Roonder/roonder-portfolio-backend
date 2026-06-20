@@ -48,9 +48,10 @@ Table reviews {
 
 Table review_comments {
   id uuid [pk, default: `uuid_generate_v4()`]
-  review_id uuid [ref: > reviews.id, not null]
+  review_id uuid [ref: > reviews.id, not null, note: 'ON DELETE CASCADE']
   author_name varchar [default: 'Anónimo']
   content text [not null]
+  is_approved boolean [default: false] // Moderación pública: solo se exponen comentarios aprobados
   created_at timestamp [default: `now()`]
 }
 
