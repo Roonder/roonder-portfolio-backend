@@ -13,3 +13,5 @@
 - [x] T5 — review-response.mapper (toReviewResponse + toReviewCommentResponse) — 5acfa60 — 64 + 105
 - [x] T6 — ThrottlerModule.forRootAsync + ThrottledWrite/Read decorator factory — 4c50315 — 35 + 159
 - [x] T7 — CreateReviewDto + ListReviewsQueryDto + ReviewResponseDto + envelope — a6468d6 — 110 + 219
+- [x] T8a — ReviewsService v1 (constructor + create) with isApproved=false default — 5a65ffe — 70 + 203
+- [x] T8b — ReviewsService.findAllApproved + findAllForAdmin (isApproved filter + 100-clamp + envelope) — efba832 — 56 + 199
