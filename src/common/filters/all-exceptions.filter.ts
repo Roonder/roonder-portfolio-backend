@@ -19,6 +19,15 @@ const STATUS_LABELS: Record<number, string> = {
 	[HttpStatus.FORBIDDEN]: "Forbidden",
 	[HttpStatus.NOT_FOUND]: "Not Found",
 	[HttpStatus.CONFLICT]: "Conflict",
+	// T15: 429 from `@nestjs/throttler`'s ThrottlerException.
+	// The exception's `getResponse()` does not include an
+	// `error` field; the filter falls back to STATUS_LABELS so
+	// the canonical envelope reads "Too Many Requests" (not the
+	// generic "Error" fallback). The Retry-After header is set
+	// by the throttler BEFORE the filter receives the exception
+	// (per ADR-12) and is preserved because the filter does not
+	// touch `res.setHeader` / `res.getHeader`.
+	[HttpStatus.TOO_MANY_REQUESTS]: "Too Many Requests",
 	[HttpStatus.INTERNAL_SERVER_ERROR]: "Internal Server Error",
 };
 

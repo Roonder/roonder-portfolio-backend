@@ -1,6 +1,8 @@
 import { join } from "node:path";
 import { readdirSync, readFileSync } from "node:fs";
 import { AppDataSource } from "./data-source";
+import { ReviewEntity } from "./reviews/entities/review.entity";
+import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 describe("DataSource migrations registration", () => {
 	it("AppDataSource.options.migrations is a non-empty array of file globs", () => {
@@ -45,5 +47,17 @@ describe("DataSource migrations registration", () => {
 		// the projects-domain migration; a future migration for another
 		// domain would not satisfy this assertion and is out of PR1 scope).
 		expect(body).toMatch(/projects/);
+	});
+});
+
+describe("DataSource entities registration", () => {
+	// reviews-domain (T4): ReviewEntity and ReviewCommentEntity are
+	// registered in AppDataSource.entities. The static guard-rail
+	// below matches the spec scenario
+	// "DataSource and ReviewsModule register ReviewEntity".
+	it("AppDataSource.entities includes ReviewEntity and ReviewCommentEntity", () => {
+		const entities = (AppDataSource.options.entities ?? []) as unknown[];
+		expect(entities).toContain(ReviewEntity);
+		expect(entities).toContain(ReviewCommentEntity);
 	});
 });

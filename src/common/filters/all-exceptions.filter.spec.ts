@@ -7,6 +7,9 @@ import {
 import type { ArgumentsHost, HttpServer } from "@nestjs/common";
 import { HttpAdapterHost } from "@nestjs/core";
 import { ConfigService } from "@nestjs/config";
+import { ThrottlerException } from "@nestjs/throttler";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { AllExceptionsFilter } from "./all-exceptions.filter";
 
 // Capture the body that the filter writes via
@@ -275,5 +278,60 @@ describe("AllExceptionsFilter — HttpException path", () => {
 			message: "Slug already in use",
 			path: "/api/v1/projects",
 		});
+	});
+
+	// --- T15: ThrottlerException → 429 + Retry-After preservation
+	//
+	// Per reviews-throttling spec scenario
+	// "Throttler Response Shape > 429 renders through the global
+	// filter" + "429 carries a Retry-After header". The
+	// `@nestjs/throttler` package sets `res.setHeader('Retry-After', N)`
+	// BEFORE the exception reaches the filter. The filter MUST NOT
+	// strip that header (the filter only calls `httpAdapter.reply`;
+	// it never touches `res.setHeader` / `res.getHeader`).
+	it("ThrottlerException renders the canonical 429 envelope", () => {
+		const exception = new ThrottlerException();
+		filter.catch(exception, makeHost({ originalUrl: "/api/v1/reviews" }));
+		expect(reply).toHaveBeenCalledTimes(1);
+		const [, body, status] = reply.mock.calls[0] as [
+			unknown,
+			Record<string, unknown>,
+			number,
+		];
+		expect(status).toBe(429);
+		expect(body).toMatchObject({
+			statusCode: 429,
+			error: "Too Many Requests",
+			path: "/api/v1/reviews",
+		});
+		// The message comes from ThrottlerException's default
+		// constructor. It is the string the @nestjs/throttler
+		// package uses.
+		expect(typeof body.message).toBe("string");
+		expect((body.message as string).length).toBeGreaterThan(0);
+		// Canonical envelope — no `stack` field, no `retryAfter`
+		// in the body (the Retry-After is a header, not a body
+		// field).
+		expect(Object.keys(body).sort()).toEqual(
+			["error", "message", "path", "statusCode", "timestamp"].sort(),
+		);
+	});
+
+	it("ThrottlerException path does NOT strip the Retry-After header (per ADR-12)", () => {
+		// The filter only calls `httpAdapter.reply(res, body, status)`.
+		// It does NOT touch `res.setHeader` / `res.getHeader`. This
+		// static check confirms the filter source is free of any
+		// header-stripping pattern. The full e2e assertion (real
+		// supertest request → real ThrottlerException → real 429 +
+		// real `Retry-After` header on the wire) is the T16 e2e
+		// spec.
+		const filterSource = readFileSync(
+			resolve(__dirname, "all-exceptions.filter.ts"),
+			"utf8",
+		);
+		// The filter MUST NOT delete headers, overwrite the
+		// `Retry-After` value, or read+discard the response headers.
+		expect(filterSource).not.toMatch(/removeHeader\s*\(\s*["']Retry-After/);
+		expect(filterSource).not.toMatch(/setHeader\s*\(\s*["']Retry-After/);
 	});
 });

@@ -10,6 +10,11 @@ process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
+// reviews-throttling (T1): the three new Joi keys, permissive for
+// the unit suite.
+process.env.REVIEWS_THROTTLE_TTL_MS = "1000";
+process.env.REVIEWS_THROTTLE_WRITE_LIMIT = "1000000";
+process.env.REVIEWS_THROTTLE_READ_LIMIT = "1000000";
 
 import "reflect-metadata";
 import { readFileSync } from "node:fs";
@@ -33,6 +38,8 @@ import { UserEntity } from "./auth/entities/user.entity";
 import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
+import { ReviewEntity } from "./reviews/entities/review.entity";
+import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -66,6 +73,11 @@ const fakeRefreshTokenRepo = {
 };
 const fakeProjectRepo = {};
 const fakeProjectUrlRepo = {};
+// T11: ReviewsService injects ReviewEntity + ReviewCommentEntity
+// repos. Empty fakes unblock the module graph (the actual
+// service spec uses richer fakes).
+const fakeReviewRepo = {};
+const fakeReviewCommentRepo = {};
 // PR2 Task 2.2: ProjectsService takes a `DataSource` for
 // `dataSource.transaction(...)` in the write paths. See
 // `src/app.module.spec.ts` for the rationale (the unit suite
@@ -96,6 +108,17 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ProjectUrlEntity),
 			useValue: fakeProjectUrlRepo,
 		},
+		// T11: ReviewsService injects ReviewEntity +
+		// ReviewCommentEntity repos. Empty fakes unblock the module
+		// composition.
+		{
+			provide: getRepositoryToken(ReviewEntity),
+			useValue: fakeReviewRepo,
+		},
+		{
+			provide: getRepositoryToken(ReviewCommentEntity),
+			useValue: fakeReviewCommentRepo,
+		},
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -103,6 +126,8 @@ const fakeDataSource = {};
 		getRepositoryToken(RefreshTokenEntity),
 		getRepositoryToken(ProjectEntity),
 		getRepositoryToken(ProjectUrlEntity),
+		getRepositoryToken(ReviewEntity),
+		getRepositoryToken(ReviewCommentEntity),
 		DataSource,
 	],
 })
@@ -277,5 +302,24 @@ describe("bootstrap()", () => {
 		// branch and the adapter reply path work.
 		expect(mainSource).toMatch(/HttpAdapterHost/);
 		expect(mainSource).toMatch(/ConfigService/);
+	});
+
+	it("main.ts sets app.set('trust proxy', 1) BEFORE useGlobalPipes (per reviews-throttling ADR-5)", () => {
+		// Per design ADR-5: the throttler reads req.ip, which
+		// must be resolved from X-Forwarded-For set by the single
+		// edge proxy. trust proxy MUST be set BEFORE the
+		// ValidationPipe (and therefore before any throttler
+		// request). The value `1` is the single-hop trust.
+		// Static source-read assertion: the order of the two
+		// statements matters for the throttler to see the real
+		// client IP.
+		expect(mainSource).toMatch(
+			/app\.set\(\s*["']trust proxy["']\s*,\s*1\s*\)/,
+		);
+		const trustProxyIdx = mainSource.indexOf("app.set('trust proxy', 1)");
+		const useGlobalPipesIdx = mainSource.indexOf("useGlobalPipes(");
+		expect(trustProxyIdx).toBeGreaterThan(-1);
+		expect(useGlobalPipesIdx).toBeGreaterThan(-1);
+		expect(trustProxyIdx).toBeLessThan(useGlobalPipesIdx);
 	});
 });

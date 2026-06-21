@@ -10,6 +10,12 @@ process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
+// reviews-throttling (T1): the three new Joi keys. Values are
+// permissive (1_000_000) so the throttler is a no-op in the unit
+// suite.
+process.env.REVIEWS_THROTTLE_TTL_MS = "1000";
+process.env.REVIEWS_THROTTLE_WRITE_LIMIT = "1000000";
+process.env.REVIEWS_THROTTLE_READ_LIMIT = "1000000";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -46,6 +52,8 @@ import { UserEntity } from "./auth/entities/user.entity";
 import { RefreshTokenEntity } from "./auth/entities/refresh-token.entity";
 import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
+import { ReviewEntity } from "./reviews/entities/review.entity";
+import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -80,6 +88,12 @@ const fakeProjectUrlRepo = {};
 // `TestFakesModule`. The service spec uses its own richer fake
 // (`fakeDataSource`) — see `src/projects/projects.service.spec.ts`.
 const fakeDataSource = {};
+// T11: ReviewsService injects ReviewEntity + ReviewCommentEntity
+// repos. Provide empty fakes so the module composition succeeds;
+// richer fakes (with createQueryBuilder, findOne, save, delete, etc.)
+// live in the reviews.service.spec suite, not here.
+const fakeReviewRepo = {};
+const fakeReviewCommentRepo = {};
 
 @Global()
 @Module({
@@ -102,6 +116,17 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ProjectUrlEntity),
 			useValue: fakeProjectUrlRepo,
 		},
+		// T11: ReviewsService injects ReviewEntity +
+		// ReviewCommentEntity repos. Empty fakes unblock the module
+		// composition; the actual service spec uses richer fakes.
+		{
+			provide: getRepositoryToken(ReviewEntity),
+			useValue: fakeReviewRepo,
+		},
+		{
+			provide: getRepositoryToken(ReviewCommentEntity),
+			useValue: fakeReviewCommentRepo,
+		},
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -109,6 +134,8 @@ const fakeDataSource = {};
 		getRepositoryToken(RefreshTokenEntity),
 		getRepositoryToken(ProjectEntity),
 		getRepositoryToken(ProjectUrlEntity),
+		getRepositoryToken(ReviewEntity),
+		getRepositoryToken(ReviewCommentEntity),
 		DataSource,
 	],
 })
@@ -203,5 +230,54 @@ describe("AppModule", () => {
 		// imported into `app.module.ts`. If a future change adds the
 		// import, that is the first step toward the forbidden wiring.
 		expect(source).not.toMatch(/AllExceptionsFilter/);
+	});
+
+	// --- reviews-throttling (T6): ThrottlerModule + APP_GUARD guard-rail
+
+	it("AppModule registers ThrottlerModule.forRootAsync with ConfigService injection", () => {
+		// Per reviews-throttling spec scenario
+		// "ThrottlerModule is registered in AppModule". The factory
+		// reads REVIEWS_THROTTLE_TTL_MS / _WRITE_LIMIT / _READ_LIMIT
+		// via the typed ConfigService<EnvConfig> and returns a single
+		// tracker. The static assertion below checks the wiring; the
+		// runtime test (T16 e2e) exercises the 429 path.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).toMatch(/ThrottlerModule\.forRootAsync/);
+		expect(source).toMatch(/inject:\s*\[ConfigService\]/);
+		expect(source).toMatch(/useFactory.*ConfigService<EnvConfig>/s);
+		expect(source).toMatch(/REVIEWS_THROTTLE_TTL_MS/);
+		expect(source).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
+	});
+
+	it("AppModule does NOT register ThrottlerGuard as a global APP_GUARD (per-route only)", () => {
+		// Per reviews-throttling spec scenario
+		// "ThrottlerGuard is NOT registered as APP_GUARD". A global
+		// guard would force every public route to opt out and would
+		// trip the per-route contract. The static assertion is the
+		// guard rail.
+		const source = readFileSync(
+			resolve(__dirname, "app.module.ts"),
+			"utf8",
+		);
+		expect(source).not.toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+	});
+
+	// --- T15: belt-and-braces — data-source.ts lists the new entities
+	it("data-source.ts registers ReviewEntity and ReviewCommentEntity (belt-and-braces)", () => {
+		// Per design ADR-7 + locked #2: the data-source entities
+		// array MUST include ReviewEntity and ReviewCommentEntity.
+		// The dedicated assertion at T4 (`data-source.spec.ts`)
+		// is the primary guard; this one is the secondary
+		// guard in the app composition spec so a future change
+		// that drops them is caught here too.
+		const dataSource = readFileSync(
+			resolve(__dirname, "data-source.ts"),
+			"utf8",
+		);
+		expect(dataSource).toMatch(/ReviewEntity/);
+		expect(dataSource).toMatch(/ReviewCommentEntity/);
 	});
 });

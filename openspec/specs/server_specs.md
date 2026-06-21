@@ -52,7 +52,10 @@ Testimonial system.
 - `GET /api/v1/admin/reviews`: Lists all reviews for management (Protected).
 - `PATCH /api/v1/admin/reviews/:id/approve`: Toggles approval status (Protected).
 - `POST /api/v1/reviews/:id/comments`: Adds a comment to a specific review (Public).
+- `GET /api/v1/reviews/:id/comments`: Lista los comentarios aprobados de una reseña (Public).
 - `DELETE /api/v1/admin/reviews/:id`: Deletes a review (Protected).
+
+> `GET /api/v1/reviews/:id/comments` (7ª ruta) fue añadida en el change `reviews-domain` (ver `openspec/changes/archive/reviews-domain/` y la capability spec `openspec/specs/reviews-domain/spec.md`). El throttler, el envelope canónico, y el contrato `is_approved`/`ON DELETE CASCADE` viven en la capability spec.
 
 ### 3.4. Contact Domain
 

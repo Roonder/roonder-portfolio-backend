@@ -18,7 +18,8 @@
 		"test:cov": "jest --coverage",
 		"test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
 		"test:e2e": "jest --config ./test/jest-e2e.json",
-		"seed:superuser": "ts-node src/cli/seed-superuser.ts"
+		"seed:superuser": "ts-node src/cli/seed-superuser.ts",
+		"seed:reviews": "ts-node src/cli/seed-reviews.ts"
 	},
 	"dependencies": {
 		"@nestjs/common": "^11.1.26",
@@ -28,6 +29,7 @@
 		"@nestjs/passport": "^11.0.5",
 		"@nestjs/platform-express": "^11.0.1",
 		"@nestjs/swagger": "^11.4.4",
+		"@nestjs/throttler": "^6.5.0",
 		"@nestjs/typeorm": "^11.0.2",
 		"bcrypt": "^5.1.1",
 		"class-transformer": "^0.5.1",

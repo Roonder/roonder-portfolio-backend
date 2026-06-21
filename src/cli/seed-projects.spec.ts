@@ -228,17 +228,15 @@ function makeFakeProjectUrlRepo(): {
 } {
 	const insertCalls: Array<Array<Record<string, unknown>>> = [];
 	const repo: FakeProjectUrlRepo = {
-		insert: jest
-			.fn()
-			.mockImplementation(
-				// `Repository<T>.insert(values)` takes a single arg
-				// (the values or array of values). Match the
-				// production call shape: 1 arg, the array of rows.
-				(rows: Array<Record<string, unknown>>) => {
-					insertCalls.push(rows);
-					return Promise.resolve({ identifiers: [], generatedMaps: [] });
-				},
-			),
+		insert: jest.fn().mockImplementation(
+			// `Repository<T>.insert(values)` takes a single arg
+			// (the values or array of values). Match the
+			// production call shape: 1 arg, the array of rows.
+			(rows: Array<Record<string, unknown>>) => {
+				insertCalls.push(rows);
+				return Promise.resolve({ identifiers: [], generatedMaps: [] });
+			},
+		),
 	};
 	return { repo, insertCalls };
 }

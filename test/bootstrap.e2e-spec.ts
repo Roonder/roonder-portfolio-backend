@@ -10,6 +10,11 @@ process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
 process.env.FRONTEND_URL = "https://app.example.com";
+// reviews-throttling (T1): the three new Joi keys, permissive for
+// the e2e suite.
+process.env.REVIEWS_THROTTLE_TTL_MS = "1000";
+process.env.REVIEWS_THROTTLE_WRITE_LIMIT = "1000000";
+process.env.REVIEWS_THROTTLE_READ_LIMIT = "1000000";
 
 // Mock @nestjs/typeorm so the e2e suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -54,6 +59,8 @@ import { UserEntity } from "../src/auth/entities/user.entity";
 import { RefreshTokenEntity } from "../src/auth/entities/refresh-token.entity";
 import { ProjectEntity } from "../src/projects/entities/project.entity";
 import { ProjectUrlEntity } from "../src/projects/entities/project-url.entity";
+import { ReviewEntity } from "../src/reviews/entities/review.entity";
+import { ReviewCommentEntity } from "../src/reviews/entities/review-comment.entity";
 import { ENV_CONFIG, EnvConfig } from "../src/config/env.config";
 
 // Fakes for the @InjectRepository() deps. TypeOrmModule is mocked at the
@@ -74,6 +81,14 @@ const fakeRefreshTokenRepo = {
 // the endpoint-level e2e lives in test/projects.e2e-spec.ts.
 const fakeProjectRepo = {};
 const fakeProjectUrlRepo = {};
+// T11 follow-up: ReviewsModule is in the imports list (T11 added
+// it). The module's TypeOrmModule.forFeature registers the review
+// repos; in this e2e harness we mock @nestjs/typeorm, so the
+// tokens must be supplied by hand. Empty fakes unblock the
+// composition; the endpoint-level e2e lives in
+// test/reviews.e2e-spec.ts.
+const fakeReviewRepo = {};
+const fakeReviewCommentRepo = {};
 const fakeDataSource = {};
 
 @Global()
@@ -92,6 +107,14 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ProjectUrlEntity),
 			useValue: fakeProjectUrlRepo,
 		},
+		{
+			provide: getRepositoryToken(ReviewEntity),
+			useValue: fakeReviewRepo,
+		},
+		{
+			provide: getRepositoryToken(ReviewCommentEntity),
+			useValue: fakeReviewCommentRepo,
+		},
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -99,6 +122,8 @@ const fakeDataSource = {};
 		getRepositoryToken(RefreshTokenEntity),
 		getRepositoryToken(ProjectEntity),
 		getRepositoryToken(ProjectUrlEntity),
+		getRepositoryToken(ReviewEntity),
+		getRepositoryToken(ReviewCommentEntity),
 		DataSource,
 	],
 })
