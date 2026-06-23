@@ -7,8 +7,7 @@ import { ContactEntity } from "./entities/contact.entity";
 import { SentEmailEntity } from "./entities/sent-email.entity";
 import { ContactCreatedEvent } from "./events/contact-created.event";
 import { CreateContactDto } from "./dto/create-contact.dto";
-import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
-import { UpdateContactStatusDto } from "./dto/update-contact-status.dto";
+import { CONTACT_STATUS } from "./dto/update-contact-status.dto";
 
 /**
  * Real spec for `ContactService`. REPLACES the previous smoke
@@ -52,7 +51,7 @@ function makeRow(overrides: Partial<ContactRow> = {}): ContactRow {
 		email: "maria@example.com",
 		subject: "Question",
 		message: "Hello",
-		status: "pending",
+		status: CONTACT_STATUS.PENDING,
 		createdAt: new Date("2026-06-19T10:00:00.000Z"),
 		updatedAt: new Date("2026-06-19T10:00:00.000Z"),
 		...overrides,
@@ -69,10 +68,13 @@ interface ContactRepoFake {
 
 function buildContactRepoFake(): ContactRepoFake {
 	return {
-		create: jest.fn((data) => ({ ...makeRow(), ...data })),
-		save: jest.fn(async (row) => row),
+		create: jest.fn((data: Partial<ContactRow>) => ({
+			...makeRow(),
+			...data,
+		})),
+		save: jest.fn((row: ContactRow) => Promise.resolve(row)),
 		findOne: jest.fn(),
-		findAndCount: jest.fn(async () => [[], 0]),
+		findAndCount: jest.fn(() => Promise.resolve([[], 0])),
 		createQueryBuilder: jest.fn(),
 	};
 }
@@ -138,7 +140,7 @@ describe("ContactService", () => {
 			expect(contacts.create).toHaveBeenCalledTimes(1);
 			expect(contacts.create).toHaveBeenCalledWith({
 				...dto,
-				status: "pending",
+				status: CONTACT_STATUS.PENDING,
 			});
 		});
 
@@ -155,17 +157,20 @@ describe("ContactService", () => {
 			});
 			await service.create(dto);
 			expect(eventEmitter.emit).toHaveBeenCalledTimes(1);
-			const [eventName, event] = eventEmitter.emit.mock.calls[0];
-			expect(eventName).toBe("contact.created");
-			expect(event).toBeInstanceOf(ContactCreatedEvent);
-			expect(event.contactId).toBe("abc-1");
-			expect(event.recipientEmail).toBe("maria@example.com");
+			const call = eventEmitter.emit.mock.calls[0] as [
+				string,
+				ContactCreatedEvent,
+			];
+			expect(call[0]).toBe("contact.created");
+			expect(call[1]).toBeInstanceOf(ContactCreatedEvent);
+			expect(call[1].contactId).toBe("abc-1");
+			expect(call[1].recipientEmail).toBe("maria@example.com");
 		});
 
 		it("returns the response DTO shape (8 fields, mapped via toContactResponse)", async () => {
 			const savedRow = makeRow({
 				id: "abc-1",
-				status: "pending",
+				status: CONTACT_STATUS.PENDING,
 			});
 			contacts.save.mockResolvedValueOnce(savedRow);
 			const out = await service.create(dto);
@@ -175,7 +180,7 @@ describe("ContactService", () => {
 				email: savedRow.email,
 				subject: savedRow.subject,
 				message: savedRow.message,
-				status: "pending",
+				status: CONTACT_STATUS.PENDING,
 				createdAt: savedRow.createdAt,
 				updatedAt: savedRow.updatedAt,
 			});
@@ -193,11 +198,9 @@ describe("ContactService", () => {
 				orderBy: jest.fn().mockReturnThis(),
 				skip: jest.fn().mockReturnThis(),
 				take: jest.fn().mockReturnThis(),
-				getManyAndCount: jest.fn(async () => [[], 0]),
+				getManyAndCount: jest.fn(() => Promise.resolve([[], 0])),
 			});
-			const out = await service.findAllForAdmin(
-				{} as ListContactsQueryDto,
-			);
+			const out = await service.findAllForAdmin({});
 			expect(out).toEqual({
 				data: [],
 				total: 0,
@@ -211,13 +214,15 @@ describe("ContactService", () => {
 				orderBy: jest.fn().mockReturnThis(),
 				skip: jest.fn().mockReturnThis(),
 				take: jest.fn().mockReturnThis(),
-				getManyAndCount: jest.fn(async () => [[makeRow()], 1]),
+				getManyAndCount: jest.fn(() =>
+					Promise.resolve([[makeRow()], 1]),
+				),
 			};
 			contacts.createQueryBuilder.mockReturnValueOnce(qb);
 			const out = await service.findAllForAdmin({
 				page: 2,
 				pageSize: 5,
-			} as ListContactsQueryDto);
+			});
 			expect(qb.skip).toHaveBeenCalledWith(5);
 			expect(qb.take).toHaveBeenCalledWith(5);
 			expect(out.page).toBe(2);
@@ -229,10 +234,10 @@ describe("ContactService", () => {
 				orderBy: jest.fn().mockReturnThis(),
 				skip: jest.fn().mockReturnThis(),
 				take: jest.fn().mockReturnThis(),
-				getManyAndCount: jest.fn(async () => [[], 0]),
+				getManyAndCount: jest.fn(() => Promise.resolve([[], 0])),
 			};
 			contacts.createQueryBuilder.mockReturnValueOnce(qb);
-			await service.findAllForAdmin({} as ListContactsQueryDto);
+			await service.findAllForAdmin({});
 			expect(qb.orderBy).toHaveBeenCalledWith(
 				"contact.created_at",
 				"DESC",
@@ -244,12 +249,12 @@ describe("ContactService", () => {
 				orderBy: jest.fn().mockReturnThis(),
 				skip: jest.fn().mockReturnThis(),
 				take: jest.fn().mockReturnThis(),
-				getManyAndCount: jest.fn(async () => [[], 0]),
+				getManyAndCount: jest.fn(() => Promise.resolve([[], 0])),
 			};
 			contacts.createQueryBuilder.mockReturnValueOnce(qb);
 			const out = await service.findAllForAdmin({
 				pageSize: 500,
-			} as ListContactsQueryDto);
+			});
 			expect(qb.take).toHaveBeenCalledWith(100);
 			expect(out.pageSize).toBe(100);
 		});
@@ -257,32 +262,38 @@ describe("ContactService", () => {
 
 	describe("updateStatus", () => {
 		it("transitions a contact to 'read' and returns the response DTO", async () => {
-			const row = makeRow({ status: "pending" });
+			const row = makeRow({ status: CONTACT_STATUS.PENDING });
 			contacts.findOne.mockResolvedValueOnce(row);
-			contacts.save.mockResolvedValueOnce({ ...row, status: "read" });
+			contacts.save.mockResolvedValueOnce({
+				...row,
+				status: CONTACT_STATUS.READ,
+			});
 			const out = await service.updateStatus(row.id, {
-				status: "read",
-			} as UpdateContactStatusDto);
-			expect(out.status).toBe("read");
+				status: CONTACT_STATUS.READ,
+			});
+			expect(out.status).toBe(CONTACT_STATUS.READ);
 			expect(contacts.save).toHaveBeenCalledTimes(1);
 		});
 
 		it("transitions a contact to 'replied'", async () => {
-			const row = makeRow({ status: "read" });
+			const row = makeRow({ status: CONTACT_STATUS.READ });
 			contacts.findOne.mockResolvedValueOnce(row);
-			contacts.save.mockResolvedValueOnce({ ...row, status: "replied" });
+			contacts.save.mockResolvedValueOnce({
+				...row,
+				status: CONTACT_STATUS.REPLIED,
+			});
 			const out = await service.updateStatus(row.id, {
-				status: "replied",
-			} as UpdateContactStatusDto);
-			expect(out.status).toBe("replied");
+				status: CONTACT_STATUS.REPLIED,
+			});
+			expect(out.status).toBe(CONTACT_STATUS.REPLIED);
 		});
 
 		it("throws NotFoundException when the contact id does not exist", async () => {
 			contacts.findOne.mockResolvedValueOnce(null);
 			await expect(
 				service.updateStatus("missing-id", {
-					status: "read",
-				} as UpdateContactStatusDto),
+					status: CONTACT_STATUS.READ,
+				}),
 			).rejects.toBeInstanceOf(NotFoundException);
 		});
 	});

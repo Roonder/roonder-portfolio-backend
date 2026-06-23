@@ -61,9 +61,7 @@ describe("SentEmailEntity metadata", () => {
 		expect(statusCol).toBeDefined();
 		// TypeORM stores the enum values as an array under
 		// `options.enum`; the migration's `CREATE TYPE` MUST match.
-		const enumValues = statusCol?.options.enum as
-			| string[]
-			| undefined;
+		const enumValues = statusCol?.options.enum as string[] | undefined;
 		expect(enumValues).toEqual(
 			expect.arrayContaining(["accepted", "failed"]),
 		);
@@ -74,9 +72,7 @@ describe("SentEmailEntity metadata", () => {
 	it("kind uses the sent_emails_kind_enum native enum (TypeORM enum: { contact_notification, contact_auto_reply })", () => {
 		const kindCol = columnsByName.get("kind");
 		expect(kindCol).toBeDefined();
-		const enumValues = kindCol?.options.enum as
-			| string[]
-			| undefined;
+		const enumValues = kindCol?.options.enum as string[] | undefined;
 		expect(enumValues).toEqual(
 			expect.arrayContaining([
 				"contact_notification",
@@ -99,18 +95,12 @@ describe("SentEmailEntity metadata", () => {
 	});
 
 	it("maps snake_case for resendId, errorMessage, createdAt, updatedAt", () => {
-		expect(columnsByName.get("resendId")?.options.name).toBe(
-			"resend_id",
-		);
+		expect(columnsByName.get("resendId")?.options.name).toBe("resend_id");
 		expect(columnsByName.get("errorMessage")?.options.name).toBe(
 			"error_message",
 		);
-		expect(columnsByName.get("createdAt")?.options.name).toBe(
-			"created_at",
-		);
-		expect(columnsByName.get("updatedAt")?.options.name).toBe(
-			"updated_at",
-		);
+		expect(columnsByName.get("createdAt")?.options.name).toBe("created_at");
+		expect(columnsByName.get("updatedAt")?.options.name).toBe("updated_at");
 	});
 
 	it("does NOT declare a foreign key to contacts (the table is audit-only, not relationally linked)", () => {

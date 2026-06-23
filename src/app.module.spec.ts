@@ -56,6 +56,9 @@ import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
 import { ReviewEntity } from "./reviews/entities/review.entity";
 import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
+import { ContactEntity } from "./contact/entities/contact.entity";
+import { SentEmailEntity } from "./contact/entities/sent-email.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -96,6 +99,16 @@ const fakeDataSource = {};
 // live in the reviews.service.spec suite, not here.
 const fakeReviewRepo = {};
 const fakeReviewCommentRepo = {};
+// T4.2 (contact-domain): ContactService injects
+// ContactEntity + SentEmailEntity repos. Empty fakes unblock
+// the module graph; the actual service spec uses richer
+// fakes (create/save/findOne/createQueryBuilder).
+const fakeContactRepo = {};
+const fakeSentEmailRepo = {};
+// T4.2: ContactService injects EventEmitter2 (the constructor
+// wires the event emission but the listener lands in T8.1).
+// Provide a no-op fake so the module composition succeeds.
+const fakeEventEmitter = { emit: () => undefined };
 
 @Global()
 @Module({
@@ -129,6 +142,19 @@ const fakeReviewCommentRepo = {};
 			provide: getRepositoryToken(ReviewCommentEntity),
 			useValue: fakeReviewCommentRepo,
 		},
+		// T4.2: ContactService injects ContactEntity +
+		// SentEmailEntity repos + EventEmitter2. Empty fakes
+		// unblock the module composition; richer fakes live in
+		// the contact.service.spec suite.
+		{
+			provide: getRepositoryToken(ContactEntity),
+			useValue: fakeContactRepo,
+		},
+		{
+			provide: getRepositoryToken(SentEmailEntity),
+			useValue: fakeSentEmailRepo,
+		},
+		{ provide: EventEmitter2, useValue: fakeEventEmitter },
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -138,6 +164,9 @@ const fakeReviewCommentRepo = {};
 		getRepositoryToken(ProjectUrlEntity),
 		getRepositoryToken(ReviewEntity),
 		getRepositoryToken(ReviewCommentEntity),
+		getRepositoryToken(ContactEntity),
+		getRepositoryToken(SentEmailEntity),
+		EventEmitter2,
 		DataSource,
 	],
 })

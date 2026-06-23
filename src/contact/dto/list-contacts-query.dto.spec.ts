@@ -36,7 +36,7 @@ describe("ListContactsQueryDto validation", () => {
 		expect(errors).toEqual([]);
 	});
 
-	it("parses ?page=2&pageSize=5 to numeric fields", async () => {
+	it("parses ?page=2&pageSize=5 to numeric fields", () => {
 		const instance = plainToInstance(ListContactsQueryDto, {
 			page: "2",
 			pageSize: "5",
@@ -55,7 +55,7 @@ describe("ListContactsQueryDto validation", () => {
 		expect(errors.some((e) => e.field === "pageSize")).toBe(true);
 	});
 
-	it("accepts the boundary ?pageSize=100", async () => {
+	it("accepts the boundary ?pageSize=100", () => {
 		const instance = plainToInstance(ListContactsQueryDto, {
 			pageSize: "100",
 		});

@@ -20,7 +20,8 @@ export const CONTACT_STATUS = {
 	READ: "read",
 	REPLIED: "replied",
 } as const;
-export type ContactStatus = (typeof CONTACT_STATUS)[keyof typeof CONTACT_STATUS];
+export type ContactStatus =
+	(typeof CONTACT_STATUS)[keyof typeof CONTACT_STATUS];
 
 /**
  * Body of `PATCH /api/v1/admin/contacts/:id`. The admin flips the
