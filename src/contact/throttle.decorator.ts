@@ -15,11 +15,14 @@ import { Throttle } from "@nestjs/throttler";
  * defaults exactly, so runtime behavior is identical to the typed
  * `ConfigService` read at module boot.
  *
- * Per ADR-2 / ADR-4: `ThrottlerGuard` is NOT registered as a global
- * `APP_GUARD`; the throttler is per-route via this factory. The
- * admin routes (`/admin/contacts/*`) carry no `@Throttle()`
+ * Per the revised throttler wire-up: `ThrottlerGuard` IS registered
+ * as a global `APP_GUARD` in `AppModule.providers` (see
+ * `src/app.module.ts`). The per-route `@Throttle()` metadata
+ * produced by this factory is enforced by that global guard.
+ * The admin routes (`/admin/contacts/*`) carry no `@Throttle()`
  * decorator (verified by the static metadata assertion in
- * `src/contact/contact-admin.controller.spec.ts`).
+ * `src/contact/contact-admin.controller.spec.ts`) so they fall
+ * under the `ThrottlerModule.forRootAsync` "default" tracker.
  *
  * The runtime 429 trigger is covered end-to-end in
  * `test/contact.e2e-spec.ts` (T11.1) which builds a parallel app

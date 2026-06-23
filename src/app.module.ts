@@ -1,7 +1,8 @@
 import { Module } from "@nestjs/common";
+import { APP_GUARD } from "@nestjs/core";
 import { ConfigModule, ConfigService } from "@nestjs/config";
 import { TypeOrmModule } from "@nestjs/typeorm";
-import { ThrottlerModule } from "@nestjs/throttler";
+import { ThrottlerModule, ThrottlerGuard } from "@nestjs/throttler";
 import { EventEmitterModule } from "@nestjs/event-emitter";
 // Modules
 import { AuthModule } from "./auth/auth.module";
@@ -39,10 +40,14 @@ import { AppDataSource } from "./data-source";
 		// gets a safe default. The per-route `@Throttle()` decorator on
 		// each public route (the reviews and contact public routes)
 		// OVERRIDES this `default` tracker with the domain-specific
-		// limit. `ThrottlerGuard` is NOT registered as `APP_GUARD` (per
-		// ADR-2); the throttler is applied per-route via the
-		// `@ThrottledWrite()` / `@ThrottledRead()` / `@ThrottledContactWrite()`
-		// factories in `src/{reviews,contact}/throttle.decorator.ts`.
+		// limit. `ThrottlerGuard` IS registered as `APP_GUARD` (this
+		// is the production wire-up; the per-route `@Throttle()`
+		// metadata only takes effect when the guard is applied — see
+		// `app.module.spec.ts` for the static guard rail). The
+		// `@ThrottledWrite()` / `@ThrottledRead()` /
+		// `@ThrottledContactWrite()` factories in
+		// `src/{reviews,contact}/throttle.decorator.ts` produce the
+		// per-route override metadata.
 		ThrottlerModule.forRootAsync({
 			inject: [ConfigService],
 			useFactory: (config: ConfigService<EnvConfig>) => {
@@ -83,6 +88,21 @@ import { AppDataSource } from "./data-source";
 		ContactModule,
 	],
 	controllers: [],
-	providers: [],
+	providers: [
+		// Global throttler guard (revisions the original ADR-2 / ADR-4
+		// "per-route only" stance). The `@Throttle()` per-route
+		// metadata set by `@ThrottledWrite` / `@ThrottledRead` /
+		// `@ThrottledContactWrite` factories is only enforced when a
+		// `ThrottlerGuard` is in the guard chain. Registering it as
+		// `APP_GUARD` makes the rate limit fire in production. The
+		// "default" tracker (from `ThrottlerModule.forRootAsync`
+		// above) covers every route that has no `@Throttle()`
+		// override; the override decorators raise the limit (or
+		// scope it per-domain). The admin routes have no
+		// `@Throttle()` override so they fall under the "default"
+		// tracker, which is permissive (1_000_000 in tests) but
+		// capped at the per-domain write limit in production.
+		{ provide: APP_GUARD, useClass: ThrottlerGuard },
+	],
 })
 export class AppModule {}

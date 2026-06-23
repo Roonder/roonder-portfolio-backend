@@ -283,17 +283,23 @@ describe("AppModule", () => {
 		expect(source).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
 	});
 
-	it("AppModule does NOT register ThrottlerGuard as a global APP_GUARD (per-route only)", () => {
-		// Per reviews-throttling spec scenario
-		// "ThrottlerGuard is NOT registered as APP_GUARD". A global
-		// guard would force every public route to opt out and would
-		// trip the per-route contract. The static assertion is the
-		// guard rail.
+	it("AppModule registers ThrottlerGuard as a global APP_GUARD (production rate-limit fires)", () => {
+		// The throttler is enforced in production ONLY when
+		// `ThrottlerGuard` is in the guard chain. The per-route
+		// `@Throttle()` metadata set by `@ThrottledWrite` /
+		// `@ThrottledRead` / `@ThrottledContactWrite` factories is
+		// inert without the guard. This static assertion is the
+		// guard rail: a future change that removes the global
+		// `APP_GUARD` provider will trip it. (This revises the
+		// original ADR-2 / ADR-4 "per-route only" stance — the
+		// per-route contract holds, but the guard has to be
+		// somewhere for the metadata to fire.)
 		const source = readFileSync(
 			resolve(__dirname, "app.module.ts"),
 			"utf8",
 		);
-		expect(source).not.toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+		expect(source).toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+		expect(source).toMatch(/useClass:\s*ThrottlerGuard/);
 	});
 
 	// --- T15: belt-and-braces — data-source.ts lists the new entities
