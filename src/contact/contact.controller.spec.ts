@@ -258,7 +258,10 @@ describe("ContactController metadata — Swagger + Throttle + No-Auth", () => {
 	});
 
 	it("declares 1 route: POST only (the public surface — no :id, no PATCH/DELETE)", () => {
-		const proto = ContactController.prototype as Record<string, unknown>;
+		const proto = ContactController.prototype as unknown as Record<
+			string,
+			unknown
+		>;
 		expect(typeof proto["create"]).toBe("function");
 		// No numeric id coercion, no :id param at all.
 		expect(controllerSource).not.toMatch(/\+id/);

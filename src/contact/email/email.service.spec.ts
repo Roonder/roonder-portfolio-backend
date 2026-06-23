@@ -42,15 +42,15 @@ import { RESEND_CLIENT } from "./resend-client.token";
  *      `sendContactAutoReply` uses the locked subject
  *      `"We received your message"` and `to = contact.email`.
  */
-const CONTACT_ROW: Pick<
-	ContactEntity,
-	"id" | "name" | "email" | "subject" | "message"
-> = {
+const CONTACT_ROW: ContactEntity = {
 	id: "11111111-2222-3333-4444-555555555555",
 	name: "Maria Lopez",
 	email: "maria@example.com",
 	subject: "Question about pricing",
 	message: "Hi, I would like to know more about the project rate.",
+	status: "pending",
+	createdAt: new Date("2026-06-19T10:00:00.000Z"),
+	updatedAt: new Date("2026-06-19T10:00:00.000Z"),
 };
 
 const FROM = "Roonder Portfolio <hello@roonder.dev>";

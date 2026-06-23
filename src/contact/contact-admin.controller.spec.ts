@@ -162,7 +162,7 @@ describe("ContactAdminController metadata — class-level guards + Swagger", () 
 	});
 
 	it("declares 2 routes: GET + PATCH (the admin surface — no :id GET, no DELETE)", () => {
-		const proto = ContactAdminController.prototype as Record<
+		const proto = ContactAdminController.prototype as unknown as Record<
 			string,
 			unknown
 		>;

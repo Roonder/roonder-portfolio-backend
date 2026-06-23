@@ -90,7 +90,7 @@ export class ContactAdminController {
 	updateStatus(
 		@Param("id", ParseUUIDPipe) id: string,
 		@Body() dto: UpdateContactStatusDto,
-	): Promise<ReturnType<typeof this.contacts.updateStatus>> {
+	): Promise<ContactResponseDto> {
 		return this.contacts.updateStatus(id, dto);
 	}
 }
