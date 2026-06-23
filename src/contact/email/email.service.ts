@@ -125,8 +125,7 @@ export class EmailService {
 						resendId: null,
 						status: "failed",
 						kind: input.kind,
-						errorMessage:
-							error?.message ?? "unknown Resend error",
+						errorMessage: error?.message ?? "unknown Resend error",
 					}),
 				);
 				return;
@@ -145,8 +144,7 @@ export class EmailService {
 		} catch (e) {
 			// Defensive: the SDK normally resolves with { data, error };
 			// a thrown exception here is a network or runtime error.
-			const message =
-				e instanceof Error ? e.message : "unknown error";
+			const message = e instanceof Error ? e.message : "unknown error";
 			await this.sentEmails.save(
 				this.sentEmails.create({
 					subject: input.subject,

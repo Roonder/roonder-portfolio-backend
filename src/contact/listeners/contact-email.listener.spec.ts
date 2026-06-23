@@ -167,10 +167,9 @@ describe("ContactEmailListener", () => {
 		expect(contacts.findOne).toHaveBeenCalledWith({
 			where: { id: ROW.id },
 		});
-		const call =
-			emailService.sendContactNotification.mock.calls[0] as [
-				typeof reReadRow,
-			];
+		const call = emailService.sendContactNotification.mock.calls[0] as [
+			typeof reReadRow,
+		];
 		expect(call[0]).toEqual(reReadRow);
 		expect(call[0].email).toBe("fresh-read@example.com");
 	});

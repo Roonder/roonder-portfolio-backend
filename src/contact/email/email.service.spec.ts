@@ -77,9 +77,9 @@ function buildSentEmailFake(): SentEmailFake {
 	return {
 		rows,
 		create: jest.fn((data: SentEmailRow) => data),
-		save: jest.fn(async (row: SentEmailRow) => {
+		save: jest.fn((row: SentEmailRow) => {
 			rows.push(row);
-			return row;
+			return Promise.resolve(row);
 		}),
 	};
 }
@@ -181,7 +181,7 @@ describe("EmailService", () => {
 			});
 			await service.sendContactNotification(CONTACT_ROW);
 			expect(sentEmails.rows).toHaveLength(1);
-			const row = sentEmails.rows[0] as SentEmailRow;
+			const row = sentEmails.rows[0];
 			expect(row.status).toBe("accepted");
 			expect(row.resendId).toBe("resend-1");
 			expect(row.errorMessage).toBeNull();
@@ -202,7 +202,7 @@ describe("EmailService", () => {
 				service.sendContactNotification(CONTACT_ROW),
 			).resolves.toBeUndefined();
 			expect(sentEmails.rows).toHaveLength(1);
-			const row = sentEmails.rows[0] as SentEmailRow;
+			const row = sentEmails.rows[0];
 			expect(row.status).toBe("failed");
 			expect(row.resendId).toBeNull();
 			expect(row.errorMessage).toBe("Domain not verified");
@@ -217,7 +217,7 @@ describe("EmailService", () => {
 				service.sendContactNotification(CONTACT_ROW),
 			).resolves.toBeUndefined();
 			expect(sentEmails.rows).toHaveLength(1);
-			const row = sentEmails.rows[0] as SentEmailRow;
+			const row = sentEmails.rows[0];
 			expect(row.status).toBe("failed");
 			expect(row.resendId).toBeNull();
 			expect(row.errorMessage).toBe("Network unreachable");
@@ -250,7 +250,7 @@ describe("EmailService", () => {
 			});
 			await service.sendContactAutoReply(CONTACT_ROW);
 			expect(sentEmails.rows).toHaveLength(1);
-			const row = sentEmails.rows[0] as SentEmailRow;
+			const row = sentEmails.rows[0];
 			expect(row.status).toBe("accepted");
 			expect(row.resendId).toBe("resend-2");
 			expect(row.kind).toBe("contact_auto_reply");
@@ -269,7 +269,7 @@ describe("EmailService", () => {
 			});
 			await service.sendContactAutoReply(CONTACT_ROW);
 			expect(sentEmails.rows).toHaveLength(1);
-			const row = sentEmails.rows[0] as SentEmailRow;
+			const row = sentEmails.rows[0];
 			expect(row.status).toBe("failed");
 			expect(row.resendId).toBeNull();
 			expect(row.errorMessage).toBe("Too many requests");

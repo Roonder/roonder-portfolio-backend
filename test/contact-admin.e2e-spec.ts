@@ -141,7 +141,10 @@ function makeQueryBuilder(rows: Iterable<ContactRow>): {
 			(a, b) => b.createdAt.getTime() - a.createdAt.getTime(),
 		);
 		const total = sorted.length;
-		const slice = sorted.slice(state.skipVal, state.skipVal + state.takeVal);
+		const slice = sorted.slice(
+			state.skipVal,
+			state.skipVal + state.takeVal,
+		);
 		return [slice, total];
 	});
 	for (const m of [

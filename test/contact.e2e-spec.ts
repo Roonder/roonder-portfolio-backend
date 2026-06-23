@@ -243,11 +243,7 @@ async function bootstrapTestApp(): Promise<INestApplication> {
 			TestFakesModule,
 		],
 		controllers: [ContactController],
-		providers: [
-			ContactService,
-			EmailService,
-			ContactEmailListener,
-		],
+		providers: [ContactService, EmailService, ContactEmailListener],
 	}).compile();
 	const app = moduleRef.createNestApplication({ logger: false });
 	configureApp(app);
@@ -307,9 +303,9 @@ describe("Contact e2e — public POST (T11.1)", () => {
 			expect(body.status).toBe("pending");
 			// Persisted with status='pending' (the public submission
 			// contract).
-			const saved = (contactRepo.save.mock.calls[0] as [
-				Partial<ContactRow>,
-			])[0];
+			const saved = (
+				contactRepo.save.mock.calls[0] as [Partial<ContactRow>]
+			)[0];
 			expect(saved?.status).toBe("pending");
 		});
 
@@ -330,9 +326,7 @@ describe("Contact e2e — public POST (T11.1)", () => {
 			// Wait for the async listener to fire and write 2 rows.
 			await new Promise((r) => setTimeout(r, 50));
 			expect(sentEmailState.rows).toHaveLength(2);
-			const kinds = sentEmailState.rows.map(
-				(r) => r["kind"] as string,
-			);
+			const kinds = sentEmailState.rows.map((r) => r["kind"] as string);
 			expect(kinds).toContain("contact_notification");
 			expect(kinds).toContain("contact_auto_reply");
 			// Both rows are 'accepted' (the fake Resend returns

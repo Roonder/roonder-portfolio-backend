@@ -46,9 +46,7 @@ describe("ThrottledContactWrite", () => {
 		// Mirror the factory's env-fallback path locally so the
 		// assertion is independent of the real `@Throttle()` call
 		// (the captured limit/ttl are bound at decoration time).
-		const write = Number(
-			process.env.CONTACT_THROTTLE_WRITE_LIMIT ?? 5,
-		);
+		const write = Number(process.env.CONTACT_THROTTLE_WRITE_LIMIT ?? 5);
 		const ttl = Number(process.env.CONTACT_THROTTLE_TTL_MS ?? 60_000);
 		expect(write).toBe(5);
 		expect(ttl).toBe(60_000);
@@ -56,9 +54,7 @@ describe("ThrottledContactWrite", () => {
 
 	it("binds CONTACT_THROTTLE_WRITE_LIMIT when set in the env", () => {
 		process.env.CONTACT_THROTTLE_WRITE_LIMIT = "12";
-		const write = Number(
-			process.env.CONTACT_THROTTLE_WRITE_LIMIT ?? 5,
-		);
+		const write = Number(process.env.CONTACT_THROTTLE_WRITE_LIMIT ?? 5);
 		expect(write).toBe(12);
 	});
 

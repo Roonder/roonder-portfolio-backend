@@ -57,9 +57,7 @@ import { EnvConfig } from "../config/env.config";
  * array.
  */
 @Module({
-	imports: [
-		TypeOrmModule.forFeature([ContactEntity, SentEmailEntity]),
-	],
+	imports: [TypeOrmModule.forFeature([ContactEntity, SentEmailEntity])],
 	controllers: [ContactController, ContactAdminController],
 	providers: [
 		ContactService,
@@ -69,9 +67,7 @@ import { EnvConfig } from "../config/env.config";
 			provide: RESEND_CLIENT,
 			inject: [ConfigService],
 			useFactory: (config: ConfigService<EnvConfig>) =>
-				new Resend(
-					config.get("RESEND_API_KEY", { infer: true }) as string,
-				),
+				new Resend(config.get("RESEND_API_KEY", { infer: true })),
 		},
 	],
 })
