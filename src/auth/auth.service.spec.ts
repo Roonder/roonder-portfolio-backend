@@ -3,6 +3,7 @@ import { JwtModule, JwtService } from "@nestjs/jwt";
 import { getRepositoryToken } from "@nestjs/typeorm";
 import { ConfigService } from "@nestjs/config";
 import { UnauthorizedException } from "@nestjs/common";
+import { DataSource } from "typeorm";
 import { createHash } from "node:crypto";
 import * as bcrypt from "bcrypt";
 import { AuthService } from "./auth.service";
@@ -150,19 +151,95 @@ function sha256(plain: string): string {
 	return createHash("sha256").update(plain).digest("hex");
 }
 
+type RefreshTokenRepoFake = FakeRefreshTokenRepo & {
+	rows: Map<string, unknown>;
+	updateCalls: Array<{ criteria: unknown; partial: unknown }>;
+	insertCalls: Array<{
+		userId: string;
+		familyId: string;
+		hashedToken: string;
+		expiresAt: Date;
+	}>;
+};
+
+/**
+ * `EntityManager` fake. The production code does
+ * `manager.getRepository(RefreshTokenEntity).update(...)` etc. inside
+ * the transaction; we hand back the SAME `rtRepo` / `userRepo` fakes
+ * the test already mutates, so all writes inside the transaction
+ * land in the same in-memory `rows` map the post-transaction reads
+ * inspect.
+ */
+function makeManager(
+	rtRepo: RefreshTokenRepoFake,
+	userRepo: FakeUserRepo,
+): { getRepository: jest.Mock } {
+	return {
+		getRepository: jest.fn((entity: unknown) => {
+			if (entity === RefreshTokenEntity) return rtRepo;
+			if (entity === UserEntity) return userRepo;
+			throw new Error(
+				`unexpected entity in test makeManager: ${String(entity)}`,
+			);
+		}),
+	};
+}
+
+interface MakeDataSourceOptions {
+	/**
+	 * Reject the FIRST `dataSource.transaction(cb)` call with this
+	 * value. The second call (if any) runs the callback normally.
+	 * Use to drive the `withRetry` retry path on a transient 40001
+	 * (set `.code = "40001"` on the Error to make `isPgError` match).
+	 */
+	throwErrorOnFirstAttempt?: Error;
+	/**
+	 * Reject EVERY `dataSource.transaction(cb)` call with this value.
+	 * Use to assert non-retryable errors bubble up unchanged.
+	 */
+	throwErrorOnEveryAttempt?: Error;
+}
+
+/**
+ * `DataSource` fake. `transaction(cb)` invokes `cb(manager)` where
+ * `manager` is the `makeManager(rtRepo, userRepo)` above. Mirrors
+ * the pattern in `projects.service.spec.ts` (`makeDataSourceWithTransaction`)
+ * but is richer: it supports an optional per-attempt error so we
+ * can exercise the `withRetry` retry path on a transient 40001.
+ */
+function makeDataSource(
+	rtRepo: RefreshTokenRepoFake,
+	userRepo: FakeUserRepo,
+	opts: MakeDataSourceOptions = {},
+): { dataSource: { transaction: jest.Mock } } {
+	let count = 0;
+	const transaction = jest.fn(
+		async (cb: (m: unknown) => Promise<unknown>) => {
+			count++;
+			if (opts.throwErrorOnFirstAttempt && count === 1) {
+				throw opts.throwErrorOnFirstAttempt;
+			}
+			if (opts.throwErrorOnEveryAttempt) {
+				throw opts.throwErrorOnEveryAttempt;
+			}
+			return cb(makeManager(rtRepo, userRepo));
+		},
+	);
+	return { dataSource: { transaction } };
+}
+
 async function buildModule(
 	userRepo: FakeUserRepo,
-	rtRepo: FakeRefreshTokenRepo & {
-		rows: Map<string, unknown>;
-		updateCalls: Array<{ criteria: unknown; partial: unknown }>;
-		insertCalls: Array<{
-			userId: string;
-			familyId: string;
-			hashedToken: string;
-			expiresAt: Date;
-		}>;
-	},
-): Promise<{ service: AuthService; jwt: JwtService; module: TestingModule }> {
+	rtRepo: RefreshTokenRepoFake,
+	dataSource?: { transaction: jest.Mock },
+): Promise<{
+	service: AuthService;
+	jwt: JwtService;
+	module: TestingModule;
+	dataSource: { transaction: jest.Mock };
+}> {
+	const ds: { transaction: jest.Mock } =
+		dataSource ?? makeDataSource(rtRepo, userRepo).dataSource;
 	const module: TestingModule = await Test.createTestingModule({
 		imports: [
 			JwtModule.register({
@@ -177,6 +254,7 @@ async function buildModule(
 				provide: getRepositoryToken(RefreshTokenEntity),
 				useValue: rtRepo,
 			},
+			{ provide: DataSource, useValue: ds },
 			{
 				provide: ConfigService,
 				useValue: {
@@ -195,7 +273,7 @@ async function buildModule(
 	}).compile();
 	const service = module.get(AuthService);
 	const jwt = module.get(JwtService);
-	return { service, jwt, module };
+	return { service, jwt, module, dataSource: ds };
 }
 
 // ---------------------------------------------------------------------------
@@ -358,6 +436,142 @@ describe("AuthService.refresh", () => {
 			UnauthorizedException,
 		);
 		expect(rtRepo.rows.get("expired")?.revokedAt).toBeNull();
+	});
+
+	// --- atomicity + retry contract (auth-refresh-retry) ----------------
+
+	it("dataSource.transaction is called exactly once on the happy path", async () => {
+		const userRepo = makeUserRepo({});
+		const rtRepo = makeRefreshTokenRepo();
+		const { dataSource: ds } = makeDataSource(rtRepo, userRepo);
+		const { service } = await buildModule(userRepo, rtRepo, ds);
+
+		const loginResult = await service.login(TEST_EMAIL, TEST_PASSWORD);
+		const oldToken = loginResult.refreshToken;
+
+		const result = await service.refresh(oldToken);
+
+		// Caller saw the new tokens (proves the callback actually ran
+		// and the in-memory rows map got the insert + the replaced_by
+		// link + the user email lookup).
+		expect(result.refreshToken).toEqual(expect.any(String));
+		expect(result.refreshToken).not.toBe(oldToken);
+		expect(result.clearCookie).toBe(false);
+		expect(ds.transaction).toHaveBeenCalledTimes(1);
+	});
+
+	it("pre-guards (missing cookie, expired, reuse-detected) open zero transactions", async () => {
+		const userRepo = makeUserRepo({});
+		const rtRepo = makeRefreshTokenRepo();
+		const { dataSource: ds } = makeDataSource(rtRepo, userRepo);
+		const { service } = await buildModule(userRepo, rtRepo, ds);
+
+		// missing cookie: throws before any DB call.
+		await expect(service.refresh("")).rejects.toThrow(
+			UnauthorizedException,
+		);
+		expect(ds.transaction).not.toHaveBeenCalled();
+
+		// expired cookie: presented row is past `expiresAt`, throws
+		// before any write.
+		const expiredFamilyId = "22222222-aaaa-bbbb-cccc-000000000002";
+		rtRepo.rows.set("expired", {
+			id: "expired",
+			revokedAt: null,
+			replacedBy: null,
+			familyId: expiredFamilyId,
+			userId: FIXED_USER_ID,
+			expiresAt: new Date(Date.now() - 1000),
+			hashedToken: sha256("expired-plaintext"),
+		});
+		await expect(service.refresh("expired-plaintext")).rejects.toThrow(
+			UnauthorizedException,
+		);
+		expect(ds.transaction).not.toHaveBeenCalled();
+
+		// reuse-detected: the family-wide update happens BEFORE the
+		// transaction; the throw is OUTSIDE the transaction. No
+		// transaction should have been opened, AND the family-wide
+		// update DID happen (proves the pre-guard branch ran).
+		const reuseFamilyId = "11111111-aaaa-bbbb-cccc-000000000001";
+		rtRepo.rows.set("r1", {
+			id: "r1",
+			revokedAt: new Date(),
+			replacedBy: null,
+			familyId: reuseFamilyId,
+			userId: FIXED_USER_ID,
+			expiresAt: new Date(Date.now() + 1000000),
+			hashedToken: sha256("r1-plaintext-tx-test"),
+		});
+		await expect(service.refresh("r1-plaintext-tx-test")).rejects.toThrow(
+			UnauthorizedException,
+		);
+		expect(ds.transaction).not.toHaveBeenCalled();
+		expect(rtRepo.updateCalls).toHaveLength(1);
+
+		// Control assertion: a SUBSEQUENT happy-path call must open
+		// exactly one transaction. This locks the combined contract
+		// ("pre-guards skip the transaction AND the happy path opens
+		// exactly one") and is the assertion that fails in RED (the
+		// current code never opens a transaction). It also guards
+		// against an over-eager refactor that opens transactions in
+		// the pre-guards.
+		const loginResult = await service.login(TEST_EMAIL, TEST_PASSWORD);
+		const result = await service.refresh(loginResult.refreshToken);
+		expect(result.refreshToken).not.toBe(loginResult.refreshToken);
+		expect(ds.transaction).toHaveBeenCalledTimes(1);
+	});
+
+	it("withRetry retries a 40001 thrown inside the transaction and the caller sees the new tokens", async () => {
+		const userRepo = makeUserRepo({});
+		const rtRepo = makeRefreshTokenRepo();
+		// Real `QueryFailedError` instances carry the PG code on a `.code`
+		// property of the underlying driver error. `withRetry`'s
+		// `isPgError` check matches any object with a string `.code`.
+		const pgErr = new Error("could not serialize access") as Error & {
+			code: string;
+		};
+		pgErr.code = "40001";
+		const { dataSource: ds } = makeDataSource(rtRepo, userRepo, {
+			throwErrorOnFirstAttempt: pgErr,
+		});
+		const { service } = await buildModule(userRepo, rtRepo, ds);
+
+		const loginResult = await service.login(TEST_EMAIL, TEST_PASSWORD);
+		const oldToken = loginResult.refreshToken;
+
+		const result = await service.refresh(oldToken);
+
+		// Caller saw new tokens (proves the SECOND attempt ran the
+		// callback to completion — the retry recovered from 40001).
+		expect(result.refreshToken).toEqual(expect.any(String));
+		expect(result.refreshToken).not.toBe(oldToken);
+		expect(result.clearCookie).toBe(false);
+		// The first attempt rejected; `withRetry` invoked the wrapped
+		// function again, so `dataSource.transaction` saw 2 calls.
+		expect(ds.transaction).toHaveBeenCalledTimes(2);
+		// The second attempt's callback mutated the rows map.
+		expect(rtRepo.rows.get("rt-2")).toBeDefined();
+		expect(rtRepo.rows.get("rt-1")?.revokedAt).toBeInstanceOf(Date);
+	});
+
+	it("non-retryable error inside the transaction bubbles up unchanged", async () => {
+		const userRepo = makeUserRepo({});
+		const rtRepo = makeRefreshTokenRepo();
+		const boom = new Error("boom");
+		const { dataSource: ds } = makeDataSource(rtRepo, userRepo, {
+			throwErrorOnEveryAttempt: boom,
+		});
+		const { service } = await buildModule(userRepo, rtRepo, ds);
+
+		const loginResult = await service.login(TEST_EMAIL, TEST_PASSWORD);
+		const oldToken = loginResult.refreshToken;
+
+		// Non-PG error: `withRetry` does NOT retry; the same error
+		// instance surfaces to the caller.
+		await expect(service.refresh(oldToken)).rejects.toBe(boom);
+		// One attempt only — no retry on non-retryable codes.
+		expect(ds.transaction).toHaveBeenCalledTimes(1);
 	});
 });
 
