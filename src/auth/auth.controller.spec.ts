@@ -29,6 +29,7 @@ import { UserEntity } from "./entities/user.entity";
 import { RefreshTokenEntity } from "./entities/refresh-token.entity";
 import { ENV_CONFIG } from "../config/env.config";
 import { AuthResponseDto } from "./dto/auth-response.dto";
+import { DataSource } from "typeorm";
 
 // ---------------------------------------------------------------------------
 // Test fixture helpers (mirror the auth.service.spec.ts pattern)
@@ -169,6 +170,36 @@ function makeRefreshTokenRepo() {
 	};
 }
 
+/**
+ * `DataSource` fake for the HTTP-shape tests. `transaction(cb)` runs
+ * `cb(manager)` where `manager.getRepository(...)` returns the same
+ * `userRepo` / `rtRepo` fakes the test mutates, so writes inside the
+ * `refresh` transaction land in the same in-memory `rows` map the
+ * post-transaction reads inspect. Mirrors `auth.service.spec.ts`'s
+ * `makeDataSource` + `makeManager` pair.
+ */
+function makeControllerSpecDataSource(
+	userRepo: ReturnType<typeof makeUserRepo>,
+	rtRepo: ReturnType<typeof makeRefreshTokenRepo>,
+): { transaction: jest.Mock } {
+	return {
+		transaction: jest.fn(
+			async (cb: (m: { getRepository: jest.Mock }) => Promise<unknown>) =>
+				cb({
+					getRepository: jest.fn((entity: unknown) => {
+						if (entity === RefreshTokenEntity) return rtRepo;
+						if (entity === UserEntity) return userRepo;
+						throw new Error(
+							`unexpected entity in controller spec: ${String(
+								entity,
+							)}`,
+						);
+					}),
+				}),
+		),
+	};
+}
+
 async function bootstrapTestApp(
 	userRepo: ReturnType<typeof makeUserRepo>,
 	rtRepo: ReturnType<typeof makeRefreshTokenRepo>,
@@ -195,6 +226,10 @@ async function bootstrapTestApp(
 			{
 				provide: getRepositoryToken(RefreshTokenEntity),
 				useValue: rtRepo,
+			},
+			{
+				provide: DataSource,
+				useValue: makeControllerSpecDataSource(userRepo, rtRepo),
 			},
 		],
 	}).compile();

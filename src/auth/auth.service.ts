@@ -2,12 +2,13 @@ import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { ConfigService } from "@nestjs/config";
 import { InjectRepository } from "@nestjs/typeorm";
-import { IsNull, Repository } from "typeorm";
+import { DataSource, IsNull, Repository } from "typeorm";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import * as bcrypt from "bcrypt";
 import { UserEntity } from "./entities/user.entity";
 import { RefreshTokenEntity } from "./entities/refresh-token.entity";
 import { EnvConfig } from "../config/env.config";
+import { withRetry } from "../common/with-retry";
 
 export interface AuthTokens {
 	accessToken: string;
@@ -61,6 +62,7 @@ export class AuthService {
 		private readonly refreshTokenRepo: Repository<RefreshTokenEntity>,
 		private readonly jwt: JwtService,
 		private readonly config: ConfigService<EnvConfig>,
+		private readonly dataSource: DataSource,
 	) {}
 
 	async login(email: string, password: string): Promise<AuthTokens> {
@@ -104,46 +106,75 @@ export class AuthService {
 		}
 		// Happy path: revoke current row, mint a new row in the same family,
 		// link them via replaced_by, and issue a fresh access token. The
-		// new refresh token is generated here (not inside
-		// `issueTokensForUser`) so we can persist it before returning it.
-		await this.refreshTokenRepo.update(row.id, { revokedAt: new Date() });
-		const newRefreshToken = randomBytes(32).toString("base64url");
-		const newHash = sha256(newRefreshToken);
-		const expiresAt = new Date(
-			Date.now() +
-				Number(
-					this.config.get("JWT_REFRESH_EXPIRES_IN", { infer: true }),
-				) *
-					1000,
-		);
-		const inserted = await this.refreshTokenRepo.insert({
-			userId: row.userId,
-			familyId: row.familyId,
-			hashedToken: newHash,
-			expiresAt,
-		});
-		const newId = (inserted.identifiers[0] as { id: string }).id;
-		await this.refreshTokenRepo.update(row.id, { replacedBy: newId });
-		// Look up the user's email to sign the access token. We keep the
-		// refresh_tokens schema denormalization-free and pay one extra
-		// round-trip on rotation only.
-		const user = await this.userRepo.findOne({
-			where: { id: row.userId },
-			select: { id: true, email: true },
-		});
-		if (!user) {
-			throw new UnauthorizedException("User not found");
-		}
-		const accessToken = await this.signAccessToken(user.id, user.email);
-		return {
-			accessToken,
-			expiresIn: this.accessTokenExpiresInSeconds(),
-			refreshToken: newRefreshToken,
-			refreshExpiresInSeconds: Number(
-				this.config.get("JWT_REFRESH_EXPIRES_IN", { infer: true }),
+		// 4 post-guard writes (revoke → insert → replaced_by → user
+		// findOne) run inside `dataSource.transaction(...)` for atomicity
+		// and `withRetry(...)` for transient PG `40001` / `40P01` — the
+		// same pattern as `ProjectsService.create` / `.update`. The
+		// pre-transaction guards above (missing cookie, expired, reuse-
+		// detected) stay outside the transaction: they are fast 401s
+		// with no DB writes (reuse-detected already runs its family-wide
+		// update directly on `this.refreshTokenRepo`).
+		return await withRetry(() =>
+			this.dataSource.transaction(
+				async (manager): Promise<RefreshResult> => {
+					await manager
+						.getRepository(RefreshTokenEntity)
+						.update(row.id, { revokedAt: new Date() });
+					const newRefreshToken =
+						randomBytes(32).toString("base64url");
+					const newHash = sha256(newRefreshToken);
+					const expiresAt = new Date(
+						Date.now() +
+							Number(
+								this.config.get("JWT_REFRESH_EXPIRES_IN", {
+									infer: true,
+								}),
+							) *
+								1000,
+					);
+					const inserted = await manager
+						.getRepository(RefreshTokenEntity)
+						.insert({
+							userId: row.userId,
+							familyId: row.familyId,
+							hashedToken: newHash,
+							expiresAt,
+						});
+					const newId = (inserted.identifiers[0] as { id: string })
+						.id;
+					await manager
+						.getRepository(RefreshTokenEntity)
+						.update(row.id, { replacedBy: newId });
+					// Look up the user's email to sign the access token.
+					// The refresh_tokens schema stays denormalization-free;
+					// we pay one extra round-trip on rotation only.
+					const user = await manager
+						.getRepository(UserEntity)
+						.findOne({
+							where: { id: row.userId },
+							select: { id: true, email: true },
+						});
+					if (!user) {
+						throw new UnauthorizedException("User not found");
+					}
+					const accessToken = await this.signAccessToken(
+						user.id,
+						user.email,
+					);
+					return {
+						accessToken,
+						expiresIn: this.accessTokenExpiresInSeconds(),
+						refreshToken: newRefreshToken,
+						refreshExpiresInSeconds: Number(
+							this.config.get("JWT_REFRESH_EXPIRES_IN", {
+								infer: true,
+							}),
+						),
+						clearCookie: false,
+					};
+				},
 			),
-			clearCookie: false,
-		};
+		);
 	}
 
 	async logout(presentedToken: string | undefined): Promise<LogoutResult> {
