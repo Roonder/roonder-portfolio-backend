@@ -1,27 +1,96 @@
-/**
- * STUB — REPLACED in T10.1 with the real admin controller.
- *
- * The `ContactModule` (T9.1) registers both
- * `ContactController` and `ContactAdminController` in its
- * `controllers` array. To keep T9.1's module composition
- * compilable without landing T10.1's full spec in the same
- * commit, this stub satisfies the type signature
- * (`@Controller("admin/contacts")` so the module can mount it
- * at the right path; class-level metadata so the global
- * `JwtAuthGuard` test in T10.1 can verify it).
- *
- * T10.1 will REPLACE this file with the real 2-method
- * controller (`findAllForAdmin` + `updateStatus`) and its
- * colocation spec. The 2 commits are independent: the module's
- * static-contract spec (T9.1) only asserts the import + class
- * reference in the source, not the method surface.
- */
-import { Controller, UseGuards } from "@nestjs/common";
-import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import {
+	Body,
+	Controller,
+	Get,
+	Param,
+	ParseUUIDPipe,
+	Patch,
+	Query,
+	UseGuards,
+} from "@nestjs/common";
+import {
+	ApiBearerAuth,
+	ApiOperation,
+	ApiQuery,
+	ApiResponse,
+	ApiTags,
+} from "@nestjs/swagger";
 import { JwtAuthGuard } from "../auth/guards/jwt-auth.guard";
+import { ContactService } from "./contact.service";
+import { ListContactsQueryDto } from "./dto/list-contacts-query.dto";
+import { ContactResponseDto } from "./dto/contact-response.dto";
+import {
+	ListContactsResponseDto,
+	ListContactsResult,
+} from "./dto/list-contacts-response.dto";
+import { UpdateContactStatusDto } from "./dto/update-contact-status.dto";
 
+/**
+ * Admin Contact surface.
+ *
+ * 2 routes (per the design's commit sequence at T10.1 — the
+ * public route is on `ContactController`):
+ *
+ *   GET    /api/v1/admin/contacts          — protected
+ *   PATCH  /api/v1/admin/contacts/:id      — protected
+ *
+ * Both routes are class-level `@UseGuards(JwtAuthGuard)`
+ * (per ADR-6) and carry `@ApiBearerAuth()` for Swagger. No
+ * throttler decorator on any method — the admin routes are
+ * intentionally unthrottled (per ADR-4; the spec scenario
+ * "Admin routes are NOT throttled" is covered by the static
+ * assertion in the controller's spec).
+ *
+ * `:id` is the contact's internal uuid — `ParseUUIDPipe`
+ * validates the format and returns 400 for anything that is
+ * not a uuid (locked #6).
+ *
+ * 4xx/5xx responses are NOT declared per route beyond the
+ * success shape; the canonical envelope is the global exception
+ * filter's job (verified at T11.1 + T11.2).
+ */
 @ApiTags("contact")
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard)
 @Controller("admin/contacts")
-export class ContactAdminController {}
+export class ContactAdminController {
+	constructor(private readonly contacts: ContactService) {}
+
+	@Get()
+	@ApiOperation({
+		summary: "List all contacts (admin, paginated)",
+	})
+	@ApiQuery({ name: "page", required: false, type: Number })
+	@ApiQuery({ name: "pageSize", required: false, type: Number })
+	@ApiResponse({
+		status: 200,
+		description: "Envelope of contacts (all statuses)",
+		type: ListContactsResponseDto,
+	})
+	@ApiResponse({ status: 400, description: "Invalid query parameters" })
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	findAllForAdmin(
+		@Query() query: ListContactsQueryDto,
+	): Promise<ListContactsResult> {
+		return this.contacts.findAllForAdmin(query);
+	}
+
+	@Patch(":id")
+	@ApiOperation({
+		summary: "Update a contact's status (admin)",
+	})
+	@ApiResponse({
+		status: 200,
+		description: "The updated contact body",
+		type: ContactResponseDto,
+	})
+	@ApiResponse({ status: 400, description: "Invalid id (non-uuid) or body" })
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	@ApiResponse({ status: 404, description: "Contact not found" })
+	updateStatus(
+		@Param("id", ParseUUIDPipe) id: string,
+		@Body() dto: UpdateContactStatusDto,
+	): Promise<ReturnType<typeof this.contacts.updateStatus>> {
+		return this.contacts.updateStatus(id, dto);
+	}
+}
