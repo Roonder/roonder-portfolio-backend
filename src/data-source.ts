@@ -6,6 +6,8 @@ import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
 import { ReviewEntity } from "./reviews/entities/review.entity";
 import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
+import { ContactEntity } from "./contact/entities/contact.entity";
+import { SentEmailEntity } from "./contact/entities/sent-email.entity";
 
 /**
  * Shared TypeORM DataSource. The seed CLI in `src/cli/seed-superuser.ts`
@@ -28,6 +30,8 @@ export const AppDataSource = new DataSource({
 		ProjectUrlEntity,
 		ReviewEntity,
 		ReviewCommentEntity,
+		ContactEntity,
+		SentEmailEntity,
 	],
 	migrations: [join(process.cwd(), "src/database/migrations/*.{ts,js}")],
 	synchronize: false,
