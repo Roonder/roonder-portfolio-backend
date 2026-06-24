@@ -22,8 +22,8 @@
 | Fix commits | 9 (one per file) |
 | Lint --fix commits | 1 (`deea7d5`, autoformatting only) |
 | Total commits ahead of `bcc7dd4` | 10 (pre-archive) |
-| New archive commits | 2 (canonical spec creation + folder move + archive report) |
-| Total commits ahead of `bcc7dd4` (post-archive) | 12 |
+| New archive commits | 1 (canonical spec creation + folder move + archive report, single commit `e2645db`) |
+| Total commits ahead of `bcc7dd4` (post-archive) | 11 (10 implementation + 1 archive) |
 | PR target | `domain/contact` first, then `dev` |
 | TDD | ACTIVE |
 | Verify verdict | **PASS WITH WARNINGS** (0 CRITICAL) |
