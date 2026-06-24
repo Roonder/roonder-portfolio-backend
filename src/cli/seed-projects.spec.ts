@@ -1,3 +1,4 @@
+import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { ProjectEntity } from "../projects/entities/project.entity";
 import { ProjectUrlEntity } from "../projects/entities/project-url.entity";
@@ -51,8 +52,9 @@ describe("seedProjects (pure function)", () => {
 		delete process.env.SEED_DRY_RUN;
 
 		const result = await seedProjects({
-			projectRepo,
-			projectUrlRepo,
+			projectRepo: projectRepo as unknown as Repository<ProjectEntity>,
+			projectUrlRepo:
+				projectUrlRepo as unknown as Repository<ProjectUrlEntity>,
 		});
 
 		expect(result.projects).toHaveLength(4);
@@ -93,16 +95,20 @@ describe("seedProjects (pure function)", () => {
 		const { repo: projectUrlRepo } = makeFakeProjectUrlRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		await seedProjects({ projectRepo, projectUrlRepo });
+		await seedProjects({
+			projectRepo: projectRepo as unknown as Repository<ProjectEntity>,
+			projectUrlRepo:
+				projectUrlRepo as unknown as Repository<ProjectUrlEntity>,
+		});
 
 		expect(createCalls).toHaveLength(4);
 		// Every project row has the slug / title / isPublished
 		// the seed script promises.
 		for (const row of createCalls) {
 			expect(typeof row.slug).toBe("string");
-			expect(row.slug.length).toBeGreaterThan(0);
+			expect(row.slug!.length).toBeGreaterThan(0);
 			expect(typeof row.title).toBe("string");
-			expect(row.title.length).toBeGreaterThan(0);
+			expect(row.title!.length).toBeGreaterThan(0);
 			expect(typeof row.isPublished).toBe("boolean");
 		}
 		// `projectRepo.save` was called once per project (4 total).
@@ -114,7 +120,11 @@ describe("seedProjects (pure function)", () => {
 		const { repo: projectUrlRepo, insertCalls } = makeFakeProjectUrlRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		await seedProjects({ projectRepo, projectUrlRepo });
+		await seedProjects({
+			projectRepo: projectRepo as unknown as Repository<ProjectEntity>,
+			projectUrlRepo:
+				projectUrlRepo as unknown as Repository<ProjectUrlEntity>,
+		});
 
 		expect(insertCalls.length).toBeGreaterThan(0);
 		// Every project_url row carries a `projectId` (a non-empty
@@ -122,7 +132,7 @@ describe("seedProjects (pure function)", () => {
 		for (const batch of insertCalls) {
 			for (const row of batch) {
 				expect(typeof row.projectId).toBe("string");
-				expect(row.projectId.length).toBeGreaterThan(0);
+				expect(row.projectId!.length).toBeGreaterThan(0);
 				expect(typeof row.title).toBe("string");
 				expect(typeof row.url).toBe("string");
 			}
@@ -139,8 +149,9 @@ describe("seedProjects (pure function)", () => {
 		process.env.SEED_DRY_RUN = "1";
 
 		const result = await seedProjects({
-			projectRepo,
-			projectUrlRepo,
+			projectRepo: projectRepo as unknown as Repository<ProjectEntity>,
+			projectUrlRepo:
+				projectUrlRepo as unknown as Repository<ProjectUrlEntity>,
 		});
 
 		// The function still reports the *intended* shape of the
@@ -165,7 +176,11 @@ describe("seedProjects (pure function)", () => {
 		const { repo: projectUrlRepo } = makeFakeProjectUrlRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		await seedProjects({ projectRepo, projectUrlRepo });
+		await seedProjects({
+			projectRepo: projectRepo as unknown as Repository<ProjectEntity>,
+			projectUrlRepo:
+				projectUrlRepo as unknown as Repository<ProjectUrlEntity>,
+		});
 
 		// `findOne` was never called by the pure function.
 		expect(findOneCalls).toHaveLength(0);
@@ -183,25 +198,17 @@ describe("seedProjects (pure function)", () => {
 	});
 });
 
-interface FakeProjectRepo {
-	findOne: jest.Mock;
-	create: jest.Mock;
-	save: jest.Mock;
-}
-interface FakeProjectUrlRepo {
-	insert: jest.Mock;
-}
-
+// NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeProjectRepo(): {
-	repo: FakeProjectRepo;
-	createCalls: Array<Record<string, unknown>>;
-	saveCalls: Array<Record<string, unknown>>;
+	repo: Pick<Repository<ProjectEntity>, "findOne" | "create" | "save">;
+	createCalls: Array<Partial<ProjectEntity>>;
+	saveCalls: Array<Partial<ProjectEntity>>;
 	findOneCalls: Array<{ where: Record<string, unknown> }>;
 } {
-	const createCalls: Array<Record<string, unknown>> = [];
-	const saveCalls: Array<Record<string, unknown>> = [];
+	const createCalls: Array<Partial<ProjectEntity>> = [];
+	const saveCalls: Array<Partial<ProjectEntity>> = [];
 	const findOneCalls: Array<{ where: Record<string, unknown> }> = [];
-	const repo: FakeProjectRepo = {
+	const repo: Pick<Repository<ProjectEntity>, "findOne" | "create" | "save"> = {
 		findOne: jest.fn().mockImplementation((args: { where: unknown }) => {
 			findOneCalls.push({
 				where: args ?? {},
@@ -210,11 +217,11 @@ function makeFakeProjectRepo(): {
 		}),
 		create: jest
 			.fn()
-			.mockImplementation((data: Record<string, unknown>) => {
+			.mockImplementation((data: Partial<ProjectEntity>) => {
 				createCalls.push(data);
 				return { id: `seeded-${createCalls.length}`, ...data };
 			}),
-		save: jest.fn().mockImplementation((data: Record<string, unknown>) => {
+		save: jest.fn().mockImplementation((data: Partial<ProjectEntity>) => {
 			saveCalls.push(data);
 			return Promise.resolve(data);
 		}),
@@ -222,17 +229,18 @@ function makeFakeProjectRepo(): {
 	return { repo, createCalls, saveCalls, findOneCalls };
 }
 
+// NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeProjectUrlRepo(): {
-	repo: FakeProjectUrlRepo;
-	insertCalls: Array<Array<Record<string, unknown>>>;
+	repo: Pick<Repository<ProjectUrlEntity>, "insert">;
+	insertCalls: Array<Array<Partial<ProjectUrlEntity>>>;
 } {
-	const insertCalls: Array<Array<Record<string, unknown>>> = [];
-	const repo: FakeProjectUrlRepo = {
+	const insertCalls: Array<Array<Partial<ProjectUrlEntity>>> = [];
+	const repo: Pick<Repository<ProjectUrlEntity>, "insert"> = {
 		insert: jest.fn().mockImplementation(
 			// `Repository<T>.insert(values)` takes a single arg
 			// (the values or array of values). Match the
 			// production call shape: 1 arg, the array of rows.
-			(rows: Array<Record<string, unknown>>) => {
+			(rows: Array<Partial<ProjectUrlEntity>>) => {
 				insertCalls.push(rows);
 				return Promise.resolve({ identifiers: [], generatedMaps: [] });
 			},
