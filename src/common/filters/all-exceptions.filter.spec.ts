@@ -10,6 +10,7 @@ import { ConfigService } from "@nestjs/config";
 import { ThrottlerException } from "@nestjs/throttler";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { EnvConfig } from "../../config/env.config";
 import { AllExceptionsFilter } from "./all-exceptions.filter";
 
 // Capture the body that the filter writes via
@@ -62,7 +63,7 @@ function makeHost(
 describe("AllExceptionsFilter — raw Error path + prod/dev branch", () => {
 	let reply: jest.Mock;
 	let host: HttpAdapterHost;
-	let config: ConfigService;
+	let config: ConfigService<EnvConfig, false>;
 	let filter: AllExceptionsFilter;
 	let errorSpy: jest.SpyInstance;
 
@@ -83,7 +84,7 @@ describe("AllExceptionsFilter — raw Error path + prod/dev branch", () => {
 		reply = env.reply;
 		host = env.host;
 		const getMock: jest.Mock = jest.fn(() => nodeEnv);
-		config = { get: getMock } as unknown as ConfigService;
+		config = { get: getMock } as unknown as ConfigService<EnvConfig, false>;
 		return new AllExceptionsFilter(host, config);
 	}
 
@@ -173,7 +174,7 @@ describe("AllExceptionsFilter — raw Error path + prod/dev branch", () => {
 describe("AllExceptionsFilter — HttpException path", () => {
 	let reply: jest.Mock;
 	let host: HttpAdapterHost;
-	let config: ConfigService;
+	let config: ConfigService<EnvConfig, false>;
 	let filter: AllExceptionsFilter;
 
 	beforeEach(() => {
@@ -189,7 +190,7 @@ describe("AllExceptionsFilter — HttpException path", () => {
 		reply = env.reply;
 		host = env.host;
 		const getMock: jest.Mock = jest.fn(() => "development");
-		config = { get: getMock } as unknown as ConfigService;
+		config = { get: getMock } as unknown as ConfigService<EnvConfig, false>;
 		filter = new AllExceptionsFilter(host, config);
 	});
 
