@@ -22,8 +22,8 @@
 | Fix commits | 9 (one per file) |
 | Lint --fix commits | 1 (`deea7d5`, autoformatting only) |
 | Total commits ahead of `bcc7dd4` | 10 (pre-archive) |
-| New archive commits | 3 (`e2645db` finalizes; `d9a2c4e` and `e56631b` correct the post-archive count to track the self-referential +1 per correction) |
-| Total commits ahead of `bcc7dd4` (post-archive) | 13 (10 implementation + 3 archive) |
+| New archive commits | 4 (1 finalizer + 3 follow-up corrections) — see `git log` for SHAs |
+| Total commits ahead of `bcc7dd4` (post-archive) | 14 (10 implementation + 4 archive) — see `git rev-list --count bcc7dd4..HEAD` for the live count |
 | PR target | `domain/contact` first, then `dev` |
 | TDD | ACTIVE |
 | Verify verdict | **PASS WITH WARNINGS** (0 CRITICAL) |
