@@ -62,8 +62,51 @@ Table contacts {
   subject varchar
   message text [not null]
   status varchar [default: 'pending', note: 'pending, read, replied']
-  email_sent_log boolean [default: true, note: 'Verifica si Resend procesó el correo']
   created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+// Audit-trail table for every Resend send attempt from the contact
+// domain. One row per email: the owner notification + the visitor
+// auto-reply each write their own row with a distinct `kind`. The
+// `email_sent_log boolean` column that previously lived on `contacts`
+// is GONE (it could not represent two distinct sends, a `resend_id`,
+// or an `error_message` per send). Operator audits failures via
+// `SELECT * FROM sent_emails WHERE status = 'failed'`. The table is
+// intentionally FK-free: a contact row can be hard-deleted without
+// cascading the audit trail. The two Postgres-native enums are
+// declared via `CREATE TYPE` (the migration's `up` step); the DBML
+// enumerates the values for documentation. The `status` enum leaves
+// room for future `delivered`, `bounced`, `complained` values once
+// a Resend webhook receiver lands (out of scope for `domain-contact`).
+Table sent_emails {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  subject varchar [not null]
+  from varchar [not null, note: 'Friendly-name form "Name <email@domain>" allowed']
+  to varchar [not null]
+  resend_id varchar [note: "Resend's data.id on success; NULL on failure"]
+  status sent_emails_status_enum [not null, note: 'accepted, failed (delivered/bounced/complained reserved for future webhook)']
+  kind sent_emails_kind_enum [not null, note: 'contact_notification, contact_auto_reply']
+  error_message text [note: 'Resend error message on failed; NULL on accepted']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    kind [name: 'idx_sent_emails_kind']
+    status [name: 'idx_sent_emails_status']
+    (created_at) [name: 'idx_sent_emails_created_at_desc', note: 'DESC for natural audit ordering']
+    (resend_id) [name: 'idx_sent_emails_resend_id_unique', unique, note: 'Partial unique index WHERE resend_id IS NOT NULL — idempotency + future webhook correlation']
+  }
+}
+
+Enum sent_emails_status_enum {
+  accepted
+  failed
+}
+
+Enum sent_emails_kind_enum {
+  contact_notification
+  contact_auto_reply
 }
 
 Table refresh_tokens {
