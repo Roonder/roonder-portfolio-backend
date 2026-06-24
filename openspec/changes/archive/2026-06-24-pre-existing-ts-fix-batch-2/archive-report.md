@@ -22,8 +22,8 @@
 | Fix commits | 9 (one per file) |
 | Lint --fix commits | 1 (`deea7d5`, autoformatting only) |
 | Total commits ahead of `bcc7dd4` | 10 (pre-archive) |
-| New archive commits | 2 (`e2645db` finalizes the archive; `d9a2c4e` corrects the post-archive commit count) |
-| Total commits ahead of `bcc7dd4` (post-archive) | 12 (10 implementation + 2 archive) |
+| New archive commits | 3 (`e2645db` finalizes; `d9a2c4e` and `e56631b` correct the post-archive count to track the self-referential +1 per correction) |
+| Total commits ahead of `bcc7dd4` (post-archive) | 13 (10 implementation + 3 archive) |
 | PR target | `domain/contact` first, then `dev` |
 | TDD | ACTIVE |
 | Verify verdict | **PASS WITH WARNINGS** (0 CRITICAL) |
