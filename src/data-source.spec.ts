@@ -6,7 +6,7 @@ import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
 
 describe("DataSource migrations registration", () => {
 	it("AppDataSource.options.migrations is a non-empty array of file globs", () => {
-		const migrations = AppDataSource.options.migrations;
+		const migrations = AppDataSource.options.migrations as string[];
 		expect(Array.isArray(migrations)).toBe(true);
 		expect(migrations.length).toBeGreaterThan(0);
 	});
