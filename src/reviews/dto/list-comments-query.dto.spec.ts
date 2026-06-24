@@ -19,7 +19,7 @@ describe("ListCommentsQueryDto", () => {
 		const errors = await validate(dto as object, {
 			transform: true,
 			transformOptions: { enableImplicitConversion: true },
-		});
+		} as never);
 		return {
 			ok: errors.length === 0,
 			messages: errors.flatMap((e) => Object.values(e.constraints ?? {})),
