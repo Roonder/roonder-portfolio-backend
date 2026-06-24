@@ -9,7 +9,7 @@
 | Date | 2026-06-23 (initial archive) / **2026-06-24** (post-verify refinement) |
 | Project | `roonder-portfolio-backend` (NestJS 11 + TypeORM + PostgreSQL/Supabase + JWT/passport + class-validator + Joi + Resend SDK + Swagger) |
 | Branch archived | `domain/contact` (DO NOT TOUCH — user handles PR / merge) |
-| Final commit count | **32 commits** ahead of `dev` HEAD `2f9c4eb` (29 original implementation + 1 throttler-fix + **2 post-verify refinement** = 32) |
+| Final commit count | **34 commits** ahead of `dev` HEAD `2f9c4eb` (29 original implementation + 1 throttler-fix + **2 post-verify refinement** + 1 reviews-e2e regression fix + 1 throttler-e2e extra + 2 lint/TS-cleanup chores + 1 archive cycle = 34; verified via `git log dev..HEAD --oneline | wc -l`) |
 | Final commit on branch | `c635205` — `docs(contact): spec dual-language email body + bilingual subjects` |
 | Final status | **ARCHIVED WITH CAVEATS** |
 | Verify report | `READY TO ARCHIVE WITH CAVEATS` — 0 CRITICAL, 1 WARNING (RESOLVED by `af70bb3`), 3 SUGGESTIONS (non-blocking, accepted as-is) |
@@ -345,7 +345,7 @@ operator MUST:
 | `npm run build` | **PASS** (exit 0) | swc-based build; pre-existing tsc errors do not block |
 | `npx tsc --noEmit 2>&1 | grep "src/contact/\|test/contact"` | **0 hits** | 0 contact-related TS errors; 9 pre-existing in `src/cli/seed-*.spec.ts` and `test/*.e2e-spec.ts` (owned by `pre-existing-ts-fix-batch-2`, out of scope) |
 | `npx eslint src/contact/` | **PASS** (exit 0) | 0 lint errors on the contact source tree |
-| `git log dev..HEAD --oneline | wc -l` | **32** | Final commit count on `domain/contact` ahead of `dev` HEAD `2f9c4eb` (29 original implementation + 1 throttler-fix + 2 post-verify refinement) |
+| `git log dev..HEAD --oneline | wc -l` | **34** | Final commit count on `domain/contact` ahead of `dev` HEAD `2f9c4eb` (33 implementation + 1 archive cycle: `75ed402`) |
 | `git status` | **working tree has the archive-cycle changes** (modified canonical specs + updated archive-report.md, untracked change-folder artifacts) | Working-tree changes are the archive move itself; they are committed in this archive cycle. |
 
 ## Skill resolution
