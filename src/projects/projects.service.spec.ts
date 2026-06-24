@@ -392,7 +392,10 @@ function makeManagerFake(): {
 function makeDataSourceWithTransaction(
 	manager: { create: jest.Mock; save: jest.Mock; insert: jest.Mock },
 	opts: { throwError?: Error } = {},
-): { dataSource: { transaction: jest.Mock }; transactionCalls: { count: number } } {
+): {
+	dataSource: { transaction: jest.Mock };
+	transactionCalls: { count: number };
+} {
 	const transactionCalls = { count: 0 };
 	const ds = {
 		transaction: jest.fn(

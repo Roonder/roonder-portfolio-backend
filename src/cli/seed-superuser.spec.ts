@@ -5,7 +5,10 @@ import { seedSuperuser } from "./seed-superuser";
 
 // NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeUserRepo(existing: { id: string; email: string } | null): {
-	repo: Pick<Repository<UserEntity>, "findOne" | "create" | "save" | "update">;
+	repo: Pick<
+		Repository<UserEntity>,
+		"findOne" | "create" | "save" | "update"
+	>;
 	createCalls: Array<{ email: string; password: string }>;
 	saveCalls: Array<{ email: string; password: string }>;
 	updateCalls: Array<{ id: string; partial: { password: string } }>;

@@ -42,7 +42,8 @@ describe("seedReviews (pure function)", () => {
 
 		const result = await seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		});
 
 		expect(result.reviews).toHaveLength(5);
@@ -59,7 +60,8 @@ describe("seedReviews (pure function)", () => {
 
 		const result = await seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		});
 
 		// Total comments = 1 (Maria) + 2 (Juan) + 0 (Ana) +
@@ -91,7 +93,8 @@ describe("seedReviews (pure function)", () => {
 
 		const result = await seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		});
 
 		// Summary still includes the intended shape.
@@ -110,7 +113,8 @@ describe("seedReviews (pure function)", () => {
 
 		const result = await seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		});
 
 		expect(result).toHaveProperty("reviews");
@@ -126,7 +130,8 @@ describe("seedReviews (pure function)", () => {
 
 		await seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		});
 
 		// The seed is single-shot: it inserts rows, never reads
@@ -151,11 +156,13 @@ describe("seedReviews (pure function)", () => {
 		// (5 reviews × 2 runs).
 		return seedReviews({
 			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
-			commentRepo: commentRepo as unknown as Repository<ReviewCommentEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
 		})
 			.then(() =>
 				seedReviews({
-					reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+					reviewRepo:
+						reviewRepo as unknown as Repository<ReviewEntity>,
 					commentRepo:
 						commentRepo as unknown as Repository<ReviewCommentEntity>,
 				}),
@@ -176,7 +183,13 @@ describe("seedReviews (pure function)", () => {
 function makeFakeReviewRepo(): {
 	repo: Pick<
 		Repository<ReviewEntity>,
-		"create" | "save" | "findOne" | "insert" | "delete" | "findAndCount" | "createQueryBuilder"
+		| "create"
+		| "save"
+		| "findOne"
+		| "insert"
+		| "delete"
+		| "findAndCount"
+		| "createQueryBuilder"
 	>;
 	createCalls: unknown[][];
 	saveCalls: unknown[][];
@@ -207,7 +220,13 @@ function makeFakeReviewRepo(): {
 		createQueryBuilder: jest.fn(),
 	} as unknown as Pick<
 		Repository<ReviewEntity>,
-		"create" | "save" | "findOne" | "insert" | "delete" | "findAndCount" | "createQueryBuilder"
+		| "create"
+		| "save"
+		| "findOne"
+		| "insert"
+		| "delete"
+		| "findAndCount"
+		| "createQueryBuilder"
 	>;
 	return { repo, createCalls, saveCalls, findOneCalls };
 }
@@ -216,7 +235,13 @@ function makeFakeReviewRepo(): {
 function makeFakeCommentRepo(): {
 	repo: Pick<
 		Repository<ReviewCommentEntity>,
-		"create" | "save" | "findOne" | "delete" | "insert" | "findAndCount" | "createQueryBuilder"
+		| "create"
+		| "save"
+		| "findOne"
+		| "delete"
+		| "insert"
+		| "findAndCount"
+		| "createQueryBuilder"
 	>;
 	insertCalls: Array<Array<Record<string, unknown>>>;
 } {
@@ -234,7 +259,13 @@ function makeFakeCommentRepo(): {
 		createQueryBuilder: jest.fn(),
 	} as unknown as Pick<
 		Repository<ReviewCommentEntity>,
-		"create" | "save" | "findOne" | "delete" | "insert" | "findAndCount" | "createQueryBuilder"
+		| "create"
+		| "save"
+		| "findOne"
+		| "delete"
+		| "insert"
+		| "findAndCount"
+		| "createQueryBuilder"
 	>;
 	return { repo, insertCalls };
 }

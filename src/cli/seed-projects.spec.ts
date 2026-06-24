@@ -208,19 +208,20 @@ function makeFakeProjectRepo(): {
 	const createCalls: Array<Partial<ProjectEntity>> = [];
 	const saveCalls: Array<Partial<ProjectEntity>> = [];
 	const findOneCalls: Array<{ where: Record<string, unknown> }> = [];
-	const repo: Pick<Repository<ProjectEntity>, "findOne" | "create" | "save"> = {
+	const repo: Pick<
+		Repository<ProjectEntity>,
+		"findOne" | "create" | "save"
+	> = {
 		findOne: jest.fn().mockImplementation((args: { where: unknown }) => {
 			findOneCalls.push({
 				where: args ?? {},
 			});
 			return Promise.resolve(null);
 		}),
-		create: jest
-			.fn()
-			.mockImplementation((data: Partial<ProjectEntity>) => {
-				createCalls.push(data);
-				return { id: `seeded-${createCalls.length}`, ...data };
-			}),
+		create: jest.fn().mockImplementation((data: Partial<ProjectEntity>) => {
+			createCalls.push(data);
+			return { id: `seeded-${createCalls.length}`, ...data };
+		}),
 		save: jest.fn().mockImplementation((data: Partial<ProjectEntity>) => {
 			saveCalls.push(data);
 			return Promise.resolve(data);
