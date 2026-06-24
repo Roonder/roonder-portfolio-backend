@@ -171,7 +171,7 @@ describe("ReviewsAdminController metadata — class-level guards + Swagger", () 
 	});
 
 	it("declares 3 routes: GET, PATCH /:id/approve, DELETE /:id (no throttler on admin per ADR-4)", () => {
-		const proto = ReviewsAdminController.prototype as Record<
+		const proto = ReviewsAdminController.prototype as unknown as Record<
 			string,
 			unknown
 		>;
