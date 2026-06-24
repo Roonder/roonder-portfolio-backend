@@ -9,26 +9,44 @@ import {
  * Spec for the pure-function email renderers in
  * `src/contact/email/email-renderer.ts`.
  *
- * 3 categories of assertions:
+ * 4 categories of assertions:
  *
  *   1. **Substitution**: the 4 `{{placeholder}}` tokens in
  *      `email-template.ts` (`{{name}}`, `{{email}}`,
  *      `{{subject}}`, `{{message}}`) are replaced with the
- *      corresponding field on the input row.
+ *      corresponding field on the input row in BOTH the
+ *      Spanish and the English sections.
  *
- *   2. **Regex invariants** (locked by the spec, design §12):
+ *   2. **Dual-language content** (locked by the spec, post-verify
+ *      refinement 2026-06-24): the rendered HTML for both
+ *      `contact_notification` and `contact_auto_reply` MUST
+ *      contain a Spanish section AND an English section. The
+ *      Spanish section appears first; the English section
+ *      appears second; a thin visual divider separates them.
+ *      The Spanish section's headings are
+ *      "Nuevo mensaje de contacto" (notification) and
+ *      "Recibimos tu mensaje" (auto-reply). The English section
+ *      keeps the original "New contact form submission" /
+ *      "We received your message" headings.
+ *
+ *   3. **Regex invariants** (locked by the spec, design §12):
  *      the rendered HTML does NOT match `/<style\b/i`, does NOT
  *      contain `display: flex`, `display: grid`,
  *      `position: absolute`, `position: fixed`, or `@font-face`.
  *      These assertions are the unit-level executable
  *      contract for the vanilla-HTML design decision.
  *
- *   3. **Plain-text fallbacks**: every render path returns a
- *      non-empty `text` variant. The auto-reply plain-text
- *      contains the locked Spanish phrase
+ *   4. **Plain-text fallbacks**: every render path returns a
+ *      non-empty `text` variant. The plain-text output mirrors
+ *      the HTML structure: Spanish section first, English
+ *      section second, separated by a "----------" divider.
+ *      The auto-reply Spanish section contains the locked
+ *      Spanish phrase
  *      `Recibimos tu mensaje, te contactaremos por email en breve.`
- *      The owner-notification plain-text starts with the
- *      literal `New contact form submission`.
+ *      The owner-notification Spanish section starts with the
+ *      literal `Nuevo mensaje de contacto` and the English
+ *      section starts with the literal
+ *      `New contact form submission`.
  */
 
 const SAMPLE_ROW = {
@@ -91,6 +109,31 @@ describe("renderContactNotificationHtml", () => {
 		);
 		expect(html).not.toContain("{{message}}");
 	});
+
+	it("contains a Spanish section with the 'Nuevo mensaje de contacto' heading", () => {
+		expect(html).toContain("Nuevo mensaje de contacto");
+	});
+
+	it("contains an English section with the 'New contact form submission' heading", () => {
+		expect(html).toContain("New contact form submission");
+	});
+
+	it("contains a Spanish 'De:' label and an English 'From:' label", () => {
+		expect(html).toContain("<strong>De:</strong>");
+		expect(html).toContain("<strong>From:</strong>");
+	});
+
+	it("contains a Spanish 'Asunto:' label and an English 'Subject:' label", () => {
+		expect(html).toContain("<strong>Asunto:</strong>");
+		expect(html).toContain("<strong>Subject:</strong>");
+	});
+
+	it("renders the Spanish section BEFORE the English section", () => {
+		const esIndex = html.indexOf("Nuevo mensaje de contacto");
+		const enIndex = html.indexOf("New contact form submission");
+		expect(esIndex).toBeGreaterThanOrEqual(0);
+		expect(enIndex).toBeGreaterThan(esIndex);
+	});
 });
 
 describe("renderContactNotificationText", () => {
@@ -101,8 +144,19 @@ describe("renderContactNotificationText", () => {
 		expect(text.length).toBeGreaterThan(0);
 	});
 
-	it("starts with 'New contact form submission'", () => {
-		expect(text.startsWith("New contact form submission")).toBe(true);
+	it("starts with the Spanish section 'Nuevo mensaje de contacto'", () => {
+		expect(text.startsWith("Nuevo mensaje de contacto")).toBe(true);
+	});
+
+	it("contains the English section 'New contact form submission'", () => {
+		expect(text).toContain("New contact form submission");
+	});
+
+	it("contains Spanish 'De:' / 'Asunto:' and English 'From:' / 'Subject:' labels", () => {
+		expect(text).toContain("De:");
+		expect(text).toContain("Asunto:");
+		expect(text).toContain("From:");
+		expect(text).toContain("Subject:");
 	});
 
 	it("substitutes the row's name, email, subject, message", () => {
@@ -143,6 +197,26 @@ describe("renderContactAutoReplyHtml", () => {
 	it("does NOT contain any unsubstituted placeholders", () => {
 		expect(html).not.toMatch(/{{/);
 	});
+
+	it("contains a Spanish section with the 'Recibimos tu mensaje' heading", () => {
+		expect(html).toContain("Recibimos tu mensaje");
+	});
+
+	it("contains an English section with the 'We received your message' heading", () => {
+		expect(html).toContain("We received your message");
+	});
+
+	it("contains a Spanish 'Hola' greeting and an English 'Hi' greeting", () => {
+		expect(html).toMatch(/Hola\s+Maria Lopez/);
+		expect(html).toMatch(/Hi\s+Maria Lopez/);
+	});
+
+	it("renders the Spanish section BEFORE the English section", () => {
+		const esIndex = html.indexOf("Recibimos tu mensaje");
+		const enIndex = html.indexOf("We received your message");
+		expect(esIndex).toBeGreaterThanOrEqual(0);
+		expect(enIndex).toBeGreaterThan(esIndex);
+	});
 });
 
 describe("renderContactAutoReplyText", () => {
@@ -153,10 +227,23 @@ describe("renderContactAutoReplyText", () => {
 		expect(text.length).toBeGreaterThan(0);
 	});
 
+	it("starts with the Spanish section heading 'Recibimos tu mensaje'", () => {
+		expect(text.startsWith("Recibimos tu mensaje")).toBe(true);
+	});
+
 	it("contains the locked Spanish copy: 'Recibimos tu mensaje, te contactaremos por email en breve.'", () => {
 		expect(text).toContain(
 			"Recibimos tu mensaje, te contactaremos por email en breve.",
 		);
+	});
+
+	it("contains the English section heading 'We received your message'", () => {
+		expect(text).toContain("We received your message");
+	});
+
+	it("contains a Spanish 'Hola' greeting and an English 'Hi' greeting", () => {
+		expect(text).toMatch(/Hola\s+Maria Lopez/);
+		expect(text).toMatch(/Hi\s+Maria Lopez/);
 	});
 
 	it("substitutes the row's name", () => {

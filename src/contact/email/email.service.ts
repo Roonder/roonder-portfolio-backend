@@ -58,14 +58,17 @@ export class EmailService {
 	) {}
 
 	/**
-	 * Sends the owner notification. Subject includes the row's
-	 * `subject` so the operator can triage at a glance.
+	 * Sends the owner notification. Subject is the dual-language
+	 * locked string `"Nuevo contacto / New contact: <subject>"` —
+	 * the row's `subject` is included so the operator can triage
+	 * at a glance, and the bilingual prefix signals that the body
+	 * is also bilingual.
 	 */
 	async sendContactNotification(contact: ContactEntity): Promise<void> {
 		await this.send({
 			from: process.env["RESEND_FROM_ADDRESS"] as string,
 			to: process.env["RESEND_TO_ADDRESS"] as string,
-			subject: `New contact form submission: ${contact.subject ?? ""}`,
+			subject: `Nuevo contacto / New contact: ${contact.subject ?? ""}`,
 			html: renderContactNotificationHtml(contact),
 			text: renderContactNotificationText(contact),
 			replyTo: contact.email,
@@ -75,15 +78,16 @@ export class EmailService {
 	}
 
 	/**
-	 * Sends the visitor auto-reply. Subject is the locked
-	 * `"We received your message"` (no `{{subject}}` placeholder
-	 * is involved on the auto-reply template).
+	 * Sends the visitor auto-reply. Subject is the dual-language
+	 * locked string `"Recibimos tu mensaje / We received your
+	 * message"` (no `{{subject}}` placeholder is involved on the
+	 * auto-reply template).
 	 */
 	async sendContactAutoReply(contact: ContactEntity): Promise<void> {
 		await this.send({
 			from: process.env["RESEND_FROM_ADDRESS"] as string,
 			to: contact.email,
-			subject: "We received your message",
+			subject: "Recibimos tu mensaje / We received your message",
 			html: renderContactAutoReplyHtml(contact),
 			text: renderContactAutoReplyText(contact),
 			kind: "contact_auto_reply",

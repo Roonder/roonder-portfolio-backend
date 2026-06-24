@@ -34,13 +34,14 @@ import { RESEND_CLIENT } from "./resend-client.token";
  *      with the thrown message, and DOES NOT rethrow.
  *
  *   4. **Subject + recipient + tag shape**:
- *      `sendContactNotification` uses
- *      `subject = "New contact form submission: <subject>"`,
- *      `to = RESEND_TO_ADDRESS`, `replyTo = contact.email`,
+ *      `sendContactNotification` uses the dual-language subject
+ *      `"Nuevo contacto / New contact: <subject>"`, `to =
+ *      RESEND_TO_ADDRESS`, `replyTo = contact.email`,
  *      `headers["X-Contact-Id"] = contact.id`, and the tag
  *      `{ name: "domain", value: "contact-form" }`.
- *      `sendContactAutoReply` uses the locked subject
- *      `"We received your message"` and `to = contact.email`.
+ *      `sendContactAutoReply` uses the dual-language locked
+ *      subject `"Recibimos tu mensaje / We received your message"`
+ *      and `to = contact.email`.
  */
 const CONTACT_ROW: ContactEntity = {
 	id: "11111111-2222-3333-4444-555555555555",
@@ -162,7 +163,7 @@ describe("EmailService", () => {
 			expect(payload["from"]).toBe(FROM);
 			expect(payload["to"]).toEqual([TO]);
 			expect(payload["subject"]).toBe(
-				"New contact form submission: Question about pricing",
+				"Nuevo contacto / New contact: Question about pricing",
 			);
 			expect(payload["replyTo"]).toBe(CONTACT_ROW.email);
 			expect(payload["headers"]).toEqual({
@@ -238,7 +239,9 @@ describe("EmailService", () => {
 			];
 			const payload = call[0];
 			expect(payload["to"]).toEqual([CONTACT_ROW.email]);
-			expect(payload["subject"]).toBe("We received your message");
+			expect(payload["subject"]).toBe(
+				"Recibimos tu mensaje / We received your message",
+			);
 			expect(payload["from"]).toBe(FROM);
 		});
 
