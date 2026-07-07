@@ -230,15 +230,15 @@ describe("ProjectsService.findOneBySlug", () => {
 		// exists. We assert the two error messages are byte-equal.
 		const repoMissing = makeProjectsRepoWithFindOne([]);
 		const serviceMissing = await buildServiceWithRepo(repoMissing);
-		const missingErr = await serviceMissing
+		const missingErr = (await serviceMissing
 			.findOneBySlug("does-not-exist")
-			.catch((e: Error) => e);
+			.catch((e: Error) => e)) as Error;
 
 		const repoDraft = makeProjectsRepoWithFindOne([ROW_DRAFT]);
 		const serviceDraft = await buildServiceWithRepo(repoDraft);
-		const draftErr = await serviceDraft
+		const draftErr = (await serviceDraft
 			.findOneBySlug("draft-idea")
-			.catch((e: Error) => e);
+			.catch((e: Error) => e)) as Error;
 
 		expect(missingErr.message).toBe(draftErr.message);
 	});
@@ -392,7 +392,10 @@ function makeManagerFake(): {
 function makeDataSourceWithTransaction(
 	manager: { create: jest.Mock; save: jest.Mock; insert: jest.Mock },
 	opts: { throwError?: Error } = {},
-): { dataSource: { transaction: jest.Mock }; transactionCalls: number } {
+): {
+	dataSource: { transaction: jest.Mock };
+	transactionCalls: { count: number };
+} {
 	const transactionCalls = { count: 0 };
 	const ds = {
 		transaction: jest.fn(
@@ -906,7 +909,9 @@ describe("ProjectsService.remove", () => {
 			],
 		}).compile();
 		const service = module.get(ProjectsService);
-		const err = await service.remove("p-missing").catch((e: Error) => e);
+		const err = (await service
+			.remove("p-missing")
+			.catch((e: Error) => e)) as Error;
 		expect(err.message).toBe("Project not found");
 	});
 

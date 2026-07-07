@@ -18,6 +18,8 @@ process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
 process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
+process.env.RESEND_FROM_ADDRESS = "Roonder Portfolio <hello@roonder.dev>";
+process.env.RESEND_TO_ADDRESS = "admin@roonder.dev";
 process.env.FRONTEND_URL = "https://app.example.com";
 // T16: throttler is permissive for the public review tests; the
 // throttler-shape assertions in T16c flip these to the spec
@@ -58,10 +60,14 @@ import { ReviewsModule } from "../src/reviews/reviews.module";
 import { AuthModule } from "../src/auth/auth.module";
 import { ProjectsModule } from "../src/projects/projects.module";
 import { ContactModule } from "../src/contact/contact.module";
+import { ContactEntity } from "../src/contact/entities/contact.entity";
+import { SentEmailEntity } from "../src/contact/entities/sent-email.entity";
 import { UserEntity } from "../src/auth/entities/user.entity";
 import { RefreshTokenEntity } from "../src/auth/entities/refresh-token.entity";
 import { ProjectEntity } from "../src/projects/entities/project.entity";
 import { ProjectUrlEntity } from "../src/projects/entities/project-url.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { RESEND_CLIENT } from "../src/contact/email/resend-client.token";
 import { ENV_CONFIG } from "../src/config/env.config";
 import { configureApp } from "../src/main";
 
@@ -152,6 +158,27 @@ const fakeProjectRepo = {};
 const fakeProjectUrlRepo = {};
 const fakeDataSource = {};
 
+// T9.1: contact-domain ContactModule now requires the
+// ContactEntity + SentEmailEntity repos + EventEmitter2 +
+// RESEND_CLIENT. The reviews e2e imports ContactModule in
+// the parallel app composition (line 297 / 1143), so its
+// TestFakesModule MUST provide these tokens. Empty fakes
+// are sufficient because the reviews tests never exercise
+// the contact routes; the e2e assertions are scoped to
+// the reviews surface.
+const fakeContactRepo = {};
+const fakeSentEmailRepo = {};
+const fakeEventEmitter = { emit: () => undefined };
+const fakeResend = {
+	emails: {
+		send: async () => ({
+			data: { id: "noop" },
+			error: null,
+			headers: null,
+		}),
+	},
+};
+
 @Global()
 @Module({
 	providers: [
@@ -173,6 +200,22 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ReviewCommentEntity),
 			useValue: commentRepo,
 		},
+		// T9.1: contact-module deps so the full app composition
+		// in bootstrapTestApp boots cleanly. The reviews e2e
+		// never exercises the contact routes — these fakes are
+		// only here to satisfy ContactService's constructor +
+		// ContactEmailListener's constructor + the RESEND_CLIENT
+		// factory.
+		{
+			provide: getRepositoryToken(ContactEntity),
+			useValue: fakeContactRepo,
+		},
+		{
+			provide: getRepositoryToken(SentEmailEntity),
+			useValue: fakeSentEmailRepo,
+		},
+		{ provide: EventEmitter2, useValue: fakeEventEmitter },
+		{ provide: RESEND_CLIENT, useValue: fakeResend },
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -182,6 +225,10 @@ const fakeDataSource = {};
 		getRepositoryToken(ProjectUrlEntity),
 		getRepositoryToken(ReviewEntity),
 		getRepositoryToken(ReviewCommentEntity),
+		getRepositoryToken(ContactEntity),
+		getRepositoryToken(SentEmailEntity),
+		EventEmitter2,
+		RESEND_CLIENT,
 		DataSource,
 	],
 })
@@ -1112,6 +1159,18 @@ async function bootstrapTestApp2(): Promise<INestApplication> {
 				provide: getRepositoryToken(ReviewCommentEntity),
 				useValue: commentRepo2,
 			},
+			// T9.1: contact-module deps (see comment on the
+			// primary TestFakesModule above).
+			{
+				provide: getRepositoryToken(ContactEntity),
+				useValue: fakeContactRepo,
+			},
+			{
+				provide: getRepositoryToken(SentEmailEntity),
+				useValue: fakeSentEmailRepo,
+			},
+			{ provide: EventEmitter2, useValue: fakeEventEmitter },
+			{ provide: RESEND_CLIENT, useValue: fakeResend },
 			{ provide: DataSource, useValue: fakeDataSource },
 		],
 		exports: [
@@ -1121,6 +1180,10 @@ async function bootstrapTestApp2(): Promise<INestApplication> {
 			getRepositoryToken(ProjectUrlEntity),
 			getRepositoryToken(ReviewEntity),
 			getRepositoryToken(ReviewCommentEntity),
+			getRepositoryToken(ContactEntity),
+			getRepositoryToken(SentEmailEntity),
+			EventEmitter2,
+			RESEND_CLIENT,
 			DataSource,
 		],
 	})

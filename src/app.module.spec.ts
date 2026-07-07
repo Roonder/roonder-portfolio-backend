@@ -9,6 +9,8 @@ process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
 process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
+process.env.RESEND_FROM_ADDRESS = "Roonder Portfolio <hello@roonder.dev>";
+process.env.RESEND_TO_ADDRESS = "admin@roonder.dev";
 process.env.FRONTEND_URL = "https://app.example.com";
 // reviews-throttling (T1): the three new Joi keys. Values are
 // permissive (1_000_000) so the throttler is a no-op in the unit
@@ -54,6 +56,9 @@ import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
 import { ReviewEntity } from "./reviews/entities/review.entity";
 import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
+import { ContactEntity } from "./contact/entities/contact.entity";
+import { SentEmailEntity } from "./contact/entities/sent-email.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 // A throwaway downstream consumer that depends on ConfigService.
 // Because ConfigModule is wired with isGlobal: true, this consumer
@@ -94,6 +99,16 @@ const fakeDataSource = {};
 // live in the reviews.service.spec suite, not here.
 const fakeReviewRepo = {};
 const fakeReviewCommentRepo = {};
+// T4.2 (contact-domain): ContactService injects
+// ContactEntity + SentEmailEntity repos. Empty fakes unblock
+// the module graph; the actual service spec uses richer
+// fakes (create/save/findOne/createQueryBuilder).
+const fakeContactRepo = {};
+const fakeSentEmailRepo = {};
+// T4.2: ContactService injects EventEmitter2 (the constructor
+// wires the event emission but the listener lands in T8.1).
+// Provide a no-op fake so the module composition succeeds.
+const fakeEventEmitter = { emit: () => undefined };
 
 @Global()
 @Module({
@@ -127,6 +142,19 @@ const fakeReviewCommentRepo = {};
 			provide: getRepositoryToken(ReviewCommentEntity),
 			useValue: fakeReviewCommentRepo,
 		},
+		// T4.2: ContactService injects ContactEntity +
+		// SentEmailEntity repos + EventEmitter2. Empty fakes
+		// unblock the module composition; richer fakes live in
+		// the contact.service.spec suite.
+		{
+			provide: getRepositoryToken(ContactEntity),
+			useValue: fakeContactRepo,
+		},
+		{
+			provide: getRepositoryToken(SentEmailEntity),
+			useValue: fakeSentEmailRepo,
+		},
+		{ provide: EventEmitter2, useValue: fakeEventEmitter },
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -136,6 +164,9 @@ const fakeReviewCommentRepo = {};
 		getRepositoryToken(ProjectUrlEntity),
 		getRepositoryToken(ReviewEntity),
 		getRepositoryToken(ReviewCommentEntity),
+		getRepositoryToken(ContactEntity),
+		getRepositoryToken(SentEmailEntity),
+		EventEmitter2,
 		DataSource,
 	],
 })
@@ -252,17 +283,23 @@ describe("AppModule", () => {
 		expect(source).toMatch(/REVIEWS_THROTTLE_WRITE_LIMIT/);
 	});
 
-	it("AppModule does NOT register ThrottlerGuard as a global APP_GUARD (per-route only)", () => {
-		// Per reviews-throttling spec scenario
-		// "ThrottlerGuard is NOT registered as APP_GUARD". A global
-		// guard would force every public route to opt out and would
-		// trip the per-route contract. The static assertion is the
-		// guard rail.
+	it("AppModule registers ThrottlerGuard as a global APP_GUARD (production rate-limit fires)", () => {
+		// The throttler is enforced in production ONLY when
+		// `ThrottlerGuard` is in the guard chain. The per-route
+		// `@Throttle()` metadata set by `@ThrottledWrite` /
+		// `@ThrottledRead` / `@ThrottledContactWrite` factories is
+		// inert without the guard. This static assertion is the
+		// guard rail: a future change that removes the global
+		// `APP_GUARD` provider will trip it. (This revises the
+		// original ADR-2 / ADR-4 "per-route only" stance — the
+		// per-route contract holds, but the guard has to be
+		// somewhere for the metadata to fire.)
 		const source = readFileSync(
 			resolve(__dirname, "app.module.ts"),
 			"utf8",
 		);
-		expect(source).not.toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+		expect(source).toMatch(/APP_GUARD[\s\S]*ThrottlerGuard/);
+		expect(source).toMatch(/useClass:\s*ThrottlerGuard/);
 	});
 
 	// --- T15: belt-and-braces — data-source.ts lists the new entities

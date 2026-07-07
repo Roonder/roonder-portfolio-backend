@@ -26,6 +26,8 @@ process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
 process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
+process.env.RESEND_FROM_ADDRESS = "Roonder Portfolio <hello@roonder.dev>";
+process.env.RESEND_TO_ADDRESS = "admin@roonder.dev";
 process.env.FRONTEND_URL = "https://app.example.com";
 process.env.NODE_ENV = "test";
 
@@ -252,7 +254,10 @@ describe("ProjectsController metadata — Swagger + Guards", () => {
 	});
 
 	it("5 routes declared on the controller (5 methods)", () => {
-		const proto = ProjectsController.prototype as Record<string, unknown>;
+		const proto = ProjectsController.prototype as unknown as Record<
+			string,
+			unknown
+		>;
 		const methods = [
 			"findPublic",
 			"findOneBySlug",
@@ -271,7 +276,10 @@ describe("ProjectsController metadata — Swagger + Guards", () => {
 		// is `__guards__` and the value is an array of guard
 		// class references. We assert the JwtAuthGuard class is
 		// in that array for each protected method.
-		const proto = ProjectsController.prototype as Record<string, object>;
+		const proto = ProjectsController.prototype as unknown as Record<
+			string,
+			object
+		>;
 		const guarded = ["create", "update", "remove"] as const;
 		for (const m of guarded) {
 			const guards = Reflect.getMetadata("__guards__", proto[m]) as
@@ -284,7 +292,10 @@ describe("ProjectsController metadata — Swagger + Guards", () => {
 	});
 
 	it("public handlers (findPublic, findOneBySlug) have NO @UseGuards", () => {
-		const proto = ProjectsController.prototype as Record<string, object>;
+		const proto = ProjectsController.prototype as unknown as Record<
+			string,
+			object
+		>;
 		const unguarded = ["findPublic", "findOneBySlug"] as const;
 		for (const m of unguarded) {
 			const guards = Reflect.getMetadata("__guards__", proto[m]) as

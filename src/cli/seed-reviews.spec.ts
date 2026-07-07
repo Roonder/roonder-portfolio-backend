@@ -1,4 +1,7 @@
+import { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
+import { ReviewEntity } from "../reviews/entities/review.entity";
+import { ReviewCommentEntity } from "../reviews/entities/review-comment.entity";
 import { seedReviews } from "./seed-reviews";
 
 /**
@@ -37,7 +40,11 @@ describe("seedReviews (pure function)", () => {
 		const { repo: commentRepo } = makeFakeCommentRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		const result = await seedReviews({ reviewRepo, commentRepo });
+		const result = await seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		});
 
 		expect(result.reviews).toHaveLength(5);
 		const approved = result.reviews.filter((r) => r.isApproved).length;
@@ -51,7 +58,11 @@ describe("seedReviews (pure function)", () => {
 		const { repo: commentRepo, insertCalls } = makeFakeCommentRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		const result = await seedReviews({ reviewRepo, commentRepo });
+		const result = await seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		});
 
 		// Total comments = 1 (Maria) + 2 (Juan) + 0 (Ana) +
 		// 1 (Luis) + 0 (Sofia) = 4.
@@ -80,7 +91,11 @@ describe("seedReviews (pure function)", () => {
 			makeFakeCommentRepo();
 		process.env.SEED_DRY_RUN = "1";
 
-		const result = await seedReviews({ reviewRepo, commentRepo });
+		const result = await seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		});
 
 		// Summary still includes the intended shape.
 		expect(result.reviews).toHaveLength(5);
@@ -96,7 +111,11 @@ describe("seedReviews (pure function)", () => {
 		const { repo: commentRepo } = makeFakeCommentRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		const result = await seedReviews({ reviewRepo, commentRepo });
+		const result = await seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		});
 
 		expect(result).toHaveProperty("reviews");
 		expect(result).toHaveProperty("comments");
@@ -109,7 +128,11 @@ describe("seedReviews (pure function)", () => {
 		const { repo: commentRepo } = makeFakeCommentRepo();
 		delete process.env.SEED_DRY_RUN;
 
-		await seedReviews({ reviewRepo, commentRepo });
+		await seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		});
 
 		// The seed is single-shot: it inserts rows, never reads
 		// the DB. This is the idempotency contract — the I/O
@@ -131,8 +154,19 @@ describe("seedReviews (pure function)", () => {
 
 		// Run twice — save should be called 10 times total
 		// (5 reviews × 2 runs).
-		return seedReviews({ reviewRepo, commentRepo })
-			.then(() => seedReviews({ reviewRepo, commentRepo }))
+		return seedReviews({
+			reviewRepo: reviewRepo as unknown as Repository<ReviewEntity>,
+			commentRepo:
+				commentRepo as unknown as Repository<ReviewCommentEntity>,
+		})
+			.then(() =>
+				seedReviews({
+					reviewRepo:
+						reviewRepo as unknown as Repository<ReviewEntity>,
+					commentRepo:
+						commentRepo as unknown as Repository<ReviewCommentEntity>,
+				}),
+			)
 			.then(() => {
 				expect(saveCalls).toHaveLength(10);
 			});
@@ -145,8 +179,18 @@ describe("seedReviews (pure function)", () => {
 // the surface area.
 // ---------------------------------------------------------------------------
 
+// NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeReviewRepo(): {
-	repo: Record<string, jest.Mock>;
+	repo: Pick<
+		Repository<ReviewEntity>,
+		| "create"
+		| "save"
+		| "findOne"
+		| "insert"
+		| "delete"
+		| "findAndCount"
+		| "createQueryBuilder"
+	>;
 	createCalls: unknown[][];
 	saveCalls: unknown[][];
 	findOneCalls: unknown[][];
@@ -154,7 +198,7 @@ function makeFakeReviewRepo(): {
 	const createCalls: unknown[][] = [];
 	const saveCalls: unknown[][] = [];
 	const findOneCalls: unknown[][] = [];
-	const repo: Record<string, jest.Mock> = {
+	const repo = {
 		create: jest.fn((dto: unknown) => {
 			createCalls.push([dto]);
 			return dto;
@@ -174,16 +218,35 @@ function makeFakeReviewRepo(): {
 		delete: jest.fn(),
 		findAndCount: jest.fn(),
 		createQueryBuilder: jest.fn(),
-	};
+	} as unknown as Pick<
+		Repository<ReviewEntity>,
+		| "create"
+		| "save"
+		| "findOne"
+		| "insert"
+		| "delete"
+		| "findAndCount"
+		| "createQueryBuilder"
+	>;
 	return { repo, createCalls, saveCalls, findOneCalls };
 }
 
+// NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeCommentRepo(): {
-	repo: Record<string, jest.Mock>;
+	repo: Pick<
+		Repository<ReviewCommentEntity>,
+		| "create"
+		| "save"
+		| "findOne"
+		| "delete"
+		| "insert"
+		| "findAndCount"
+		| "createQueryBuilder"
+	>;
 	insertCalls: Array<Array<Record<string, unknown>>>;
 } {
 	const insertCalls: Array<Array<Record<string, unknown>>> = [];
-	const repo: Record<string, jest.Mock> = {
+	const repo = {
 		create: jest.fn(),
 		save: jest.fn(),
 		findOne: jest.fn(),
@@ -194,6 +257,15 @@ function makeFakeCommentRepo(): {
 		}),
 		findAndCount: jest.fn(),
 		createQueryBuilder: jest.fn(),
-	};
+	} as unknown as Pick<
+		Repository<ReviewCommentEntity>,
+		| "create"
+		| "save"
+		| "findOne"
+		| "delete"
+		| "insert"
+		| "findAndCount"
+		| "createQueryBuilder"
+	>;
 	return { repo, insertCalls };
 }

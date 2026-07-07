@@ -1,15 +1,14 @@
 import * as bcrypt from "bcrypt";
+import { Repository } from "typeorm";
+import { UserEntity } from "../auth/entities/user.entity";
 import { seedSuperuser } from "./seed-superuser";
 
-interface FakeUserRepo {
-	findOne: jest.Mock;
-	create: jest.Mock;
-	save: jest.Mock;
-	update: jest.Mock;
-}
-
+// NOTE: keep in sync with the production Repository<T> methods this fake is asked for.
 function makeFakeUserRepo(existing: { id: string; email: string } | null): {
-	repo: FakeUserRepo;
+	repo: Pick<
+		Repository<UserEntity>,
+		"findOne" | "create" | "save" | "update"
+	>;
 	createCalls: Array<{ email: string; password: string }>;
 	saveCalls: Array<{ email: string; password: string }>;
 	updateCalls: Array<{ id: string; partial: { password: string } }>;
@@ -18,7 +17,7 @@ function makeFakeUserRepo(existing: { id: string; email: string } | null): {
 	const saveCalls: Array<{ email: string; password: string }> = [];
 	const updateCalls: Array<{ id: string; partial: { password: string } }> =
 		[];
-	const repo: FakeUserRepo = {
+	const repo = {
 		findOne: jest.fn().mockResolvedValue(existing),
 		create: jest
 			.fn()
@@ -38,7 +37,10 @@ function makeFakeUserRepo(existing: { id: string; email: string } | null): {
 				updateCalls.push({ id, partial });
 				return Promise.resolve({ affected: 1 });
 			}),
-	};
+	} as unknown as Pick<
+		Repository<UserEntity>,
+		"findOne" | "create" | "save" | "update"
+	>;
 	return { repo, createCalls, saveCalls, updateCalls };
 }
 
@@ -50,7 +52,11 @@ describe("seedSuperuser (pure function)", () => {
 		const { repo, createCalls, saveCalls, updateCalls } =
 			makeFakeUserRepo(null);
 
-		await seedSuperuser(VALID_EMAIL, VALID_PASSWORD, repo);
+		await seedSuperuser(
+			VALID_EMAIL,
+			VALID_PASSWORD,
+			repo as unknown as Repository<UserEntity>,
+		);
 
 		expect(repo.findOne).toHaveBeenCalledWith({
 			where: { email: VALID_EMAIL },
@@ -71,7 +77,11 @@ describe("seedSuperuser (pure function)", () => {
 		const { repo, createCalls, saveCalls, updateCalls } =
 			makeFakeUserRepo(existing);
 
-		await seedSuperuser(VALID_EMAIL, VALID_PASSWORD, repo);
+		await seedSuperuser(
+			VALID_EMAIL,
+			VALID_PASSWORD,
+			repo as unknown as Repository<UserEntity>,
+		);
 
 		expect(repo.findOne).toHaveBeenCalledWith({
 			where: { email: VALID_EMAIL },
@@ -90,7 +100,11 @@ describe("seedSuperuser (pure function)", () => {
 		// assert bcrypt.compare(plain, hash) is true.
 		const { repo, createCalls } = makeFakeUserRepo(null);
 
-		await seedSuperuser(VALID_EMAIL, VALID_PASSWORD, repo);
+		await seedSuperuser(
+			VALID_EMAIL,
+			VALID_PASSWORD,
+			repo as unknown as Repository<UserEntity>,
+		);
 
 		const storedHash = createCalls[0].password;
 		// Asserts the hash actually validates against the original plaintext.
@@ -107,9 +121,13 @@ describe("seedSuperuser (pure function)", () => {
 		const { repo, createCalls, saveCalls, updateCalls } =
 			makeFakeUserRepo(null);
 
-		await expect(seedSuperuser("", VALID_PASSWORD, repo)).rejects.toThrow(
-			/SUPERUSER_EMAIL/,
-		);
+		await expect(
+			seedSuperuser(
+				"",
+				VALID_PASSWORD,
+				repo as unknown as Repository<UserEntity>,
+			),
+		).rejects.toThrow(/SUPERUSER_EMAIL/);
 
 		// No repository method was invoked (the validation happens before
 		// any DB work — this is the "fail fast" contract from ADR-7).
@@ -124,13 +142,21 @@ describe("seedSuperuser (pure function)", () => {
 			makeFakeUserRepo(null);
 
 		// empty string
-		await expect(seedSuperuser(VALID_EMAIL, "", repo)).rejects.toThrow(
-			/SUPERUSER_PASSWORD/,
-		);
+		await expect(
+			seedSuperuser(
+				VALID_EMAIL,
+				"",
+				repo as unknown as Repository<UserEntity>,
+			),
+		).rejects.toThrow(/SUPERUSER_PASSWORD/);
 		// shorter than 8 characters
-		await expect(seedSuperuser(VALID_EMAIL, "short", repo)).rejects.toThrow(
-			/SUPERUSER_PASSWORD/,
-		);
+		await expect(
+			seedSuperuser(
+				VALID_EMAIL,
+				"short",
+				repo as unknown as Repository<UserEntity>,
+			),
+		).rejects.toThrow(/SUPERUSER_PASSWORD/);
 
 		// No repository method was invoked.
 		expect(repo.findOne).not.toHaveBeenCalled();

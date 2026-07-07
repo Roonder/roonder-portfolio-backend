@@ -32,6 +32,8 @@ process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
 process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
+process.env.RESEND_FROM_ADDRESS = "Roonder Portfolio <hello@roonder.dev>";
+process.env.RESEND_TO_ADDRESS = "admin@roonder.dev";
 process.env.FRONTEND_URL = "https://app.example.com";
 process.env.NODE_ENV = "test";
 // Throttler is a no-op in the unit suite.
@@ -169,7 +171,7 @@ describe("ReviewsAdminController metadata — class-level guards + Swagger", () 
 	});
 
 	it("declares 3 routes: GET, PATCH /:id/approve, DELETE /:id (no throttler on admin per ADR-4)", () => {
-		const proto = ReviewsAdminController.prototype as Record<
+		const proto = ReviewsAdminController.prototype as unknown as Record<
 			string,
 			unknown
 		>;

@@ -9,6 +9,8 @@ process.env.JWT_REFRESH_EXPIRES_IN = "2592000";
 process.env.SUPERUSER_EMAIL = "admin@test.io";
 process.env.SUPERUSER_PASSWORD = "test-password";
 process.env.RESEND_API_KEY = "re_test";
+process.env.RESEND_FROM_ADDRESS = "Roonder Portfolio <hello@roonder.dev>";
+process.env.RESEND_TO_ADDRESS = "admin@roonder.dev";
 process.env.FRONTEND_URL = "https://app.example.com";
 // reviews-throttling (T1): the three new Joi keys, permissive for
 // the unit suite.
@@ -40,6 +42,9 @@ import { ProjectEntity } from "./projects/entities/project.entity";
 import { ProjectUrlEntity } from "./projects/entities/project-url.entity";
 import { ReviewEntity } from "./reviews/entities/review.entity";
 import { ReviewCommentEntity } from "./reviews/entities/review-comment.entity";
+import { ContactEntity } from "./contact/entities/contact.entity";
+import { SentEmailEntity } from "./contact/entities/sent-email.entity";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 
 // Mock @nestjs/typeorm so the unit suite never opens a real DB connection.
 // The real TypeOrmCoreModule would call dataSource.initialize() at module
@@ -78,6 +83,16 @@ const fakeProjectUrlRepo = {};
 // service spec uses richer fakes).
 const fakeReviewRepo = {};
 const fakeReviewCommentRepo = {};
+// T4.2 (contact-domain): ContactService injects
+// ContactEntity + SentEmailEntity repos. Empty fakes unblock
+// the module graph; the actual service spec uses richer
+// fakes (create/save/findOne/createQueryBuilder).
+const fakeContactRepo = {};
+const fakeSentEmailRepo = {};
+// T4.2: ContactService injects EventEmitter2 (the constructor
+// wires the event emission but the listener lands in T8.1).
+// Provide a no-op fake so the module composition succeeds.
+const fakeEventEmitter = { emit: () => undefined };
 // PR2 Task 2.2: ProjectsService takes a `DataSource` for
 // `dataSource.transaction(...)` in the write paths. See
 // `src/app.module.spec.ts` for the rationale (the unit suite
@@ -119,6 +134,19 @@ const fakeDataSource = {};
 			provide: getRepositoryToken(ReviewCommentEntity),
 			useValue: fakeReviewCommentRepo,
 		},
+		// T4.2: ContactService injects ContactEntity +
+		// SentEmailEntity repos + EventEmitter2. Empty fakes
+		// unblock the module composition; richer fakes live in
+		// the contact.service.spec suite.
+		{
+			provide: getRepositoryToken(ContactEntity),
+			useValue: fakeContactRepo,
+		},
+		{
+			provide: getRepositoryToken(SentEmailEntity),
+			useValue: fakeSentEmailRepo,
+		},
+		{ provide: EventEmitter2, useValue: fakeEventEmitter },
 		{ provide: DataSource, useValue: fakeDataSource },
 	],
 	exports: [
@@ -128,6 +156,9 @@ const fakeDataSource = {};
 		getRepositoryToken(ProjectUrlEntity),
 		getRepositoryToken(ReviewEntity),
 		getRepositoryToken(ReviewCommentEntity),
+		getRepositoryToken(ContactEntity),
+		getRepositoryToken(SentEmailEntity),
+		EventEmitter2,
 		DataSource,
 	],
 })

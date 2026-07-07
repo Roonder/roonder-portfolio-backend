@@ -10,6 +10,15 @@ export interface EnvConfig {
 	SUPERUSER_EMAIL: string;
 	SUPERUSER_PASSWORD: string;
 	RESEND_API_KEY: string;
+	// contact-domain (T1.1): the `from` address MUST allow the
+	// friendly-name form `"Name <email@domain>"` that Resend's API
+	// accepts. Joi's `.email()` would reject the angle brackets,
+	// so the schema uses `.string()` only and the runtime trusts
+	// the operator to put a valid address. The `to` address is a
+	// bare email (Resend rejects the friendly-name form on `to`),
+	// so the schema enforces `.email()`.
+	RESEND_FROM_ADDRESS: string;
+	RESEND_TO_ADDRESS: string;
 	FRONTEND_URL: string;
 	// `NODE_ENV` is consumed by the global exception filter (Task 1.6/1.7)
 	// to choose the prod vs dev 5xx sanitization branch. Joi's `.default()`
@@ -23,6 +32,14 @@ export interface EnvConfig {
 	REVIEWS_THROTTLE_TTL_MS: number;
 	REVIEWS_THROTTLE_WRITE_LIMIT: number;
 	REVIEWS_THROTTLE_READ_LIMIT: number;
+	// contact-throttling (T1.1): same shape as the reviews knobs.
+	// The `_READ_LIMIT` is reserved for forward-compat (no public
+	// contact read is throttled today; if a `GET /api/v1/contacts/:id`
+	// route is added later, the env-var naming is already consistent).
+	// Floors match the reviews precedent exactly.
+	CONTACT_THROTTLE_TTL_MS: number;
+	CONTACT_THROTTLE_WRITE_LIMIT: number;
+	CONTACT_THROTTLE_READ_LIMIT: number;
 }
 
 export const ENV_CONFIG = Joi.object<EnvConfig>({
@@ -45,6 +62,14 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	SUPERUSER_PASSWORD: Joi.string().min(8).required(),
 	FRONTEND_URL: Joi.string().required(),
 	RESEND_API_KEY: Joi.string().required(),
+	// contact-domain addressing (T1.1, proposal §6 #4).
+	// `RESEND_FROM_ADDRESS` is `.string()` (NOT `.email()`) so the
+	// friendly-name form `"Name <email@domain>"` passes. Resend
+	// will reject the send at runtime if the address is unverified.
+	// `RESEND_TO_ADDRESS` is a bare email; Resend rejects the
+	// friendly-name form on `to`, so the schema enforces `.email()`.
+	RESEND_FROM_ADDRESS: Joi.string().required(),
+	RESEND_TO_ADDRESS: Joi.string().email().required(),
 	NODE_ENV: Joi.string()
 		.valid("development", "test", "production")
 		.default("development"),
@@ -56,4 +81,8 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	REVIEWS_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
 	REVIEWS_THROTTLE_WRITE_LIMIT: Joi.number().integer().min(1).default(5),
 	REVIEWS_THROTTLE_READ_LIMIT: Joi.number().integer().min(1).default(60),
+	// contact-throttling (T1.1): same shape + floors as reviews.
+	CONTACT_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
+	CONTACT_THROTTLE_WRITE_LIMIT: Joi.number().integer().min(1).default(5),
+	CONTACT_THROTTLE_READ_LIMIT: Joi.number().integer().min(1).default(60),
 });
