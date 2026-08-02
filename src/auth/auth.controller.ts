@@ -22,7 +22,18 @@ import { LoginDto } from "./dto/login.dto";
 type AuthenticatedRequest = Request & { user: { id: string; email: string } };
 
 const REFRESH_COOKIE_NAME = "rt";
-const REFRESH_COOKIE_PATH = "/";
+// Both the `rt` and `access` cookies are scoped to `/` (design §7.2
+// table — the access token must ride every request to the site, not
+// just /admin). Shared by setRefreshCookie / clearRefreshCookie /
+// setAccessCookie.
+const COOKIE_PATH = "/";
+// Non-HttpOnly cookie that carries the short-lived JWT access token
+// so the frontend's React Router loaders can read it on the server
+// during SSR (localStorage is browser-only). The bridge to the
+// `useSessionStore` zustand store on the client. Attribute contract
+// is the single source of truth at
+// openspec/changes/auth-fetch-client/design.md §7.2.
+const ACCESS_COOKIE_NAME = "access";
 
 /**
  * Public + bearer-protected auth surface.
@@ -59,6 +70,7 @@ export class AuthController {
 			result.refreshToken,
 			result.refreshExpiresInSeconds,
 		);
+		this.setAccessCookie(res, result.accessToken, result.expiresIn);
 		return { accessToken: result.accessToken, expiresIn: result.expiresIn };
 	}
 
@@ -79,6 +91,7 @@ export class AuthController {
 				result.refreshExpiresInSeconds,
 			);
 		}
+		this.setAccessCookie(res, result.accessToken, result.expiresIn);
 		return { accessToken: result.accessToken, expiresIn: result.expiresIn };
 	}
 
@@ -124,7 +137,7 @@ export class AuthController {
 			httpOnly: true,
 			secure: true,
 			sameSite: "lax",
-			path: REFRESH_COOKIE_PATH,
+			path: COOKIE_PATH,
 			maxAge: maxAgeSeconds * 1000,
 		});
 	}
@@ -134,8 +147,30 @@ export class AuthController {
 			httpOnly: true,
 			secure: true,
 			sameSite: "lax",
-			path: REFRESH_COOKIE_PATH,
+			path: COOKIE_PATH,
 			maxAge: 0,
+		});
+	}
+
+	// SSR bridge — the access JWT travels in a non-HttpOnly cookie so
+	// the frontend's React Router loaders can forward it as the
+	// `Authorization: Bearer` header on protected fetches, AND the
+	// client-side `useSessionStore` can read it without a round-trip.
+	// The `rt` cookie stays HttpOnly because it is the long-lived
+	// credential that can be replayed; the access token's 15-minute
+	// `JWT_EXPIRES_IN` caps the XSS exposure. Attribute contract is
+	// locked at openspec/changes/auth-fetch-client/design.md §7.2.
+	private setAccessCookie(
+		res: Response,
+		accessToken: string,
+		expiresInSeconds: number,
+	): void {
+		res.cookie(ACCESS_COOKIE_NAME, accessToken, {
+			httpOnly: false,
+			secure: true,
+			sameSite: "lax",
+			path: COOKIE_PATH,
+			maxAge: expiresInSeconds * 1000,
 		});
 	}
 }
