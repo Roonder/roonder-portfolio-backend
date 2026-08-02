@@ -311,6 +311,46 @@ describe("AuthController (HTTP shape)", () => {
 				.set("Content-Type", "application/json");
 			expect(res.status).toBe(400);
 		});
+
+		// SSR bridge: the frontend's React Router loaders need the access
+		// token in a cookie they can read on the server (localStorage is
+		// browser-only). The `access` cookie carries the JWT verbatim;
+		// it is non-HttpOnly so the client-side zustand store can also
+		// read it. The cookie attributes mirror
+		// openspec/changes/auth-fetch-client/design.md §7.2.
+		it("sets non-HttpOnly `access` cookie carrying the JWT (Secure, SameSite=Lax, Path=/, Max-Age=900)", async () => {
+			const res = await request(app.getHttpServer() as App)
+				.post("/api/v1/auth/login")
+				.send({ email: TEST_EMAIL, password: TEST_PASSWORD })
+				.set("Content-Type", "application/json");
+			expect(res.status).toBe(200);
+			const body = res.body as AuthResponseDto;
+			const setCookies = res.headers["set-cookie"];
+			expect(setCookies).toBeDefined();
+			const setCookieArray = Array.isArray(setCookies)
+				? setCookies
+				: [String(setCookies)];
+			// Find the `access` entry in the array (express emits one
+			// Set-Cookie header per `res.cookie()` call).
+			const accessEntry = setCookieArray.find((c) =>
+				c.startsWith("access="),
+			);
+			expect(accessEntry).toBeDefined();
+			// Value MUST equal the access token returned in the body.
+			// JWTs contain `.`; escape them for the regex.
+			const escaped = body.accessToken.replace(/\./g, "\\.");
+			expect(accessEntry).toMatch(new RegExp(`^access=${escaped};`));
+			// Five attribute flags (per design §7.2):
+			// httpOnly=false → the `HttpOnly` attribute is OMITTED from
+			// the Set-Cookie string (express only emits it when true).
+			expect(accessEntry).not.toMatch(/HttpOnly/i);
+			expect(accessEntry).toMatch(/Secure/i);
+			expect(accessEntry).toMatch(/SameSite=Lax/i);
+			expect(accessEntry).toMatch(/Path=\//);
+			// JWT_EXPIRES_IN="15m" → 900s. The `Max-Age` header is in
+			// seconds, not the ms value passed to `res.cookie`.
+			expect(accessEntry).toMatch(/Max-Age=900/);
+		});
 	});
 
 	describe("POST /api/v1/auth/refresh", () => {
@@ -337,6 +377,45 @@ describe("AuthController (HTTP shape)", () => {
 			const newCookie = refreshRes.headers["set-cookie"]?.[0] ?? "";
 			expect(newCookie).toMatch(/^rt=/);
 			expect(newCookie).not.toBe(oldCookie);
+		});
+
+		// Triangulation: the same `access` cookie attribute contract
+		// must hold on the refresh path. This exercises a different
+		// controller method (login() vs refresh()) and a different
+		// access token (rotated), so a "fake it" implementation that
+		// only sets the cookie on login() would fail this test.
+		it("sets the non-HttpOnly `access` cookie on refresh (rotated JWT, same attributes)", async () => {
+			const loginRes = await request(app.getHttpServer() as App)
+				.post("/api/v1/auth/login")
+				.send({ email: TEST_EMAIL, password: TEST_PASSWORD })
+				.set("Content-Type", "application/json");
+			expect(loginRes.status).toBe(200);
+			const oldRt =
+				/rt=([^;]+)/.exec(loginRes.headers["set-cookie"]?.[0] ?? "")
+					?.[1] ?? "";
+
+			const refreshRes = await request(app.getHttpServer() as App)
+				.post("/api/v1/auth/refresh")
+				.set("Cookie", `rt=${oldRt}`)
+				.set("Content-Type", "application/json");
+			expect(refreshRes.status).toBe(200);
+			const body = refreshRes.body as AuthResponseDto;
+			const setCookies = refreshRes.headers["set-cookie"];
+			expect(setCookies).toBeDefined();
+			const setCookieArray = Array.isArray(setCookies)
+				? setCookies
+				: [String(setCookies)];
+			const accessEntry = setCookieArray.find((c) =>
+				c.startsWith("access="),
+			);
+			expect(accessEntry).toBeDefined();
+			const escaped = body.accessToken.replace(/\./g, "\\.");
+			expect(accessEntry).toMatch(new RegExp(`^access=${escaped};`));
+			expect(accessEntry).not.toMatch(/HttpOnly/i);
+			expect(accessEntry).toMatch(/Secure/i);
+			expect(accessEntry).toMatch(/SameSite=Lax/i);
+			expect(accessEntry).toMatch(/Path=\//);
+			expect(accessEntry).toMatch(/Max-Age=900/);
 		});
 	});
 
