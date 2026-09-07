@@ -11,6 +11,7 @@ import {
 	Query,
 	UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import {
 	ApiBearerAuth,
 	ApiOperation,
@@ -54,6 +55,7 @@ export class ProjectsController {
 	constructor(private readonly projects: ProjectsService) {}
 
 	@Get()
+	@SkipThrottle()
 	@ApiOperation({ summary: "List public projects (paginated, filterable)" })
 	@ApiResponse({
 		status: 200,
@@ -66,6 +68,7 @@ export class ProjectsController {
 	}
 
 	@Get(":slug")
+	@SkipThrottle()
 	@ApiOperation({ summary: "Get a published project by slug" })
 	@ApiResponse({
 		status: 200,
@@ -80,6 +83,7 @@ export class ProjectsController {
 	@Post()
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@ApiOperation({ summary: "Create a new project" })
 	@ApiResponse({
 		status: 201,
@@ -96,6 +100,7 @@ export class ProjectsController {
 	@Patch(":id")
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "Update a project (DIFF urls, partial body)",
 	})
@@ -118,6 +123,7 @@ export class ProjectsController {
 	@Delete(":id")
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@HttpCode(204)
 	@ApiOperation({ summary: "Delete a project (cascades to project_urls)" })
 	@ApiResponse({ status: 204, description: "Project deleted" })

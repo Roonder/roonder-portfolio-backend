@@ -40,6 +40,16 @@ export interface EnvConfig {
 	CONTACT_THROTTLE_TTL_MS: number;
 	CONTACT_THROTTLE_WRITE_LIMIT: number;
 	CONTACT_THROTTLE_READ_LIMIT: number;
+	// admin-throttling: only `POST /auth/login` stays behind a
+	// dedicated brute-force limit. Every other admin route uses
+	// `@SkipThrottle()` (see `auth/throttle.decorator.ts`).
+	ADMIN_THROTTLE_TTL_MS: number;
+	ADMIN_THROTTLE_LOGIN_LIMIT: number;
+	// Supabase only exposes a single database ("postgres") per
+	// project — the dev/prod split happens at the Postgres schema
+	// level instead. Defaults to "public" so local/dev docker
+	// Postgres (which only ever had one schema) is unaffected.
+	DB_SCHEMA?: string;
 }
 
 export const ENV_CONFIG = Joi.object<EnvConfig>({
@@ -85,4 +95,8 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	CONTACT_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
 	CONTACT_THROTTLE_WRITE_LIMIT: Joi.number().integer().min(1).default(5),
 	CONTACT_THROTTLE_READ_LIMIT: Joi.number().integer().min(1).default(60),
+	// admin-throttling: same floors as reviews/contact.
+	ADMIN_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
+	ADMIN_THROTTLE_LOGIN_LIMIT: Joi.number().integer().min(1).default(10),
+	DB_SCHEMA: Joi.string().default("public"),
 });
