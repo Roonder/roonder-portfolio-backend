@@ -5,6 +5,17 @@ import { ConflictException, NotFoundException } from "@nestjs/common";
 import { ProjectsService } from "./projects.service";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
+import { UploadsService } from "../uploads/uploads.service";
+
+// `UploadsService` is a real class dependency of `ProjectsService`
+// (resolves a stored `coverImage` key into a signed URL). None of the
+// fixtures below set a non-null `coverImage`, so the fake never needs
+// to resolve anything real — it exists purely to satisfy Nest's DI
+// graph at `compile()` time.
+const uploadsServiceFake = {
+	provide: UploadsService,
+	useValue: { getSignedCoverImageUrl: jest.fn() },
+};
 
 // ---------------------------------------------------------------------------
 // Fakes
@@ -108,6 +119,7 @@ async function buildService(
 				useValue: {},
 			},
 			{ provide: DataSource, useValue: {} },
+			uploadsServiceFake,
 		],
 	}).compile();
 	return module.get(ProjectsService);
@@ -176,6 +188,7 @@ async function buildServiceWithRepo(repo: {
 				useValue: {},
 			},
 			{ provide: DataSource, useValue: {} },
+			uploadsServiceFake,
 		],
 	}).compile();
 	return module.get(ProjectsService);
@@ -425,6 +438,7 @@ async function buildServiceWithDeps(
 				useValue: {},
 			},
 			{ provide: DataSource, useValue: dataSource },
+			uploadsServiceFake,
 		],
 	}).compile();
 	return module.get(ProjectsService);
@@ -648,6 +662,7 @@ async function buildServiceForUpdate(
 				useValue: {},
 			},
 			{ provide: DataSource, useValue: ds },
+			uploadsServiceFake,
 		],
 	}).compile();
 	return module.get(ProjectsService);
@@ -866,6 +881,7 @@ describe("ProjectsService.remove", () => {
 					useValue: {},
 				},
 				{ provide: DataSource, useValue: {} },
+				uploadsServiceFake,
 			],
 		}).compile();
 		const service = module.get(ProjectsService);
@@ -885,6 +901,7 @@ describe("ProjectsService.remove", () => {
 					useValue: {},
 				},
 				{ provide: DataSource, useValue: {} },
+				uploadsServiceFake,
 			],
 		}).compile();
 		const service = module.get(ProjectsService);
@@ -906,6 +923,7 @@ describe("ProjectsService.remove", () => {
 					useValue: {},
 				},
 				{ provide: DataSource, useValue: {} },
+				uploadsServiceFake,
 			],
 		}).compile();
 		const service = module.get(ProjectsService);
@@ -931,6 +949,7 @@ describe("ProjectsService.remove", () => {
 					useValue: {},
 				},
 				{ provide: DataSource, useValue: {} },
+				uploadsServiceFake,
 			],
 		}).compile();
 		const service = module.get(ProjectsService);

@@ -20,6 +20,7 @@ import type { ProjectResponseDto } from "./dto/project-response.dto";
 import type { ProjectUrlDto } from "./dto/project-url.dto";
 import { toProjectResponse } from "./project-response.mapper";
 import { withRetry } from "../common/with-retry";
+import { UploadsService } from "../uploads/uploads.service";
 
 /**
  * Projects domain service. The methods are filled in by Tasks 2.3
@@ -46,7 +47,16 @@ export class ProjectsService {
 		@InjectRepository(ProjectUrlEntity)
 		private readonly projectUrls: Repository<ProjectUrlEntity>,
 		private readonly dataSource: DataSource,
+		private readonly uploads: UploadsService,
 	) {}
+
+	/**
+	 * Bound to `UploadsService.getSignedCoverImageUrl` and passed to
+	 * `toProjectResponse` at every call site — the single place this
+	 * service decides how a stored `coverImage` key becomes a URL.
+	 */
+	private readonly resolveCoverImage = (key: string): Promise<string> =>
+		this.uploads.getSignedCoverImageUrl(key);
 
 	// --- Public reads (Tasks 2.3, 2.4) --------------------------------
 
@@ -92,7 +102,9 @@ export class ProjectsService {
 
 		const [rows, total] = await qb.getManyAndCount();
 		return {
-			data: rows.map(toProjectResponse),
+			data: await Promise.all(
+				rows.map((row) => toProjectResponse(row, this.resolveCoverImage)),
+			),
 			total,
 			page,
 			pageSize,
@@ -121,7 +133,7 @@ export class ProjectsService {
 		if (!row) {
 			throw new NotFoundException("Project not found");
 		}
-		return toProjectResponse(row);
+		return toProjectResponse(row, this.resolveCoverImage);
 	}
 
 	// --- Admin writes (Tasks 2.5, 2.6, 2.7) --------------------------
@@ -190,7 +202,7 @@ export class ProjectsService {
 				where: { id: saved.id },
 				relations: { urls: true },
 			});
-			return toProjectResponse(withUrls ?? saved);
+			return toProjectResponse(withUrls ?? saved, this.resolveCoverImage);
 		} catch (e) {
 			// Postgres code 23505 = unique_violation. We only
 			// translate it to a 409 when the violation is on the
@@ -304,7 +316,7 @@ export class ProjectsService {
 								where: { id },
 								relations: { urls: true },
 							})) ?? row;
-						return toProjectResponse(refreshed);
+						return toProjectResponse(refreshed, this.resolveCoverImage);
 					},
 				),
 			);

@@ -22,6 +22,8 @@
 		"seed:reviews": "ts-node src/cli/seed-reviews.ts"
 	},
 	"dependencies": {
+		"@aws-sdk/client-s3": "^3.1127.0",
+		"@aws-sdk/s3-request-presigner": "^3.1127.0",
 		"@nestjs/common": "^11.1.26",
 		"@nestjs/config": "^4.0.4",
 		"@nestjs/core": "^11.0.1",
