@@ -29,13 +29,19 @@ import { ProjectResponseDto } from "./dto/project-response.dto";
 /**
  * Public + admin CRUD surface for projects.
  *
- * 5 routes (per design §Swagger Annotations and ADR-5):
+ * 7 routes (per design §Swagger Annotations and ADR-5):
  *
- *   GET    /api/v1/projects           — public, paginated list
+ *   GET    /api/v1/projects           — public, paginated list (published only)
+ *   GET    /api/v1/projects/admin     — protected (JwtAuthGuard), list any publish state
+ *   GET    /api/v1/projects/by-id/:id — protected (JwtAuthGuard), read by uuid
  *   GET    /api/v1/projects/:slug     — public, single project by slug
  *   POST   /api/v1/projects           — protected (JwtAuthGuard), create
  *   PATCH  /api/v1/projects/:id       — protected (JwtAuthGuard), update
  *   DELETE /api/v1/projects/:id       — protected (JwtAuthGuard), delete
+ *
+ * `admin` and `by-id/:id` are declared BEFORE `:slug` — route
+ * registration order matters here, otherwise the `:slug` wildcard
+ * would swallow both literal segments.
  *
  * `:id` is the project's internal uuid — `ParseUUIDPipe` validates
  * the format and returns 400 for anything that is not a uuid. The
@@ -65,6 +71,37 @@ export class ProjectsController {
 	@ApiResponse({ status: 400, description: "Invalid query parameters" })
 	findPublic(@Query() query: ListProjectsQueryDto) {
 		return this.projects.findPublic(query);
+	}
+
+	@Get("admin")
+	@ApiBearerAuth()
+	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
+	@ApiOperation({ summary: "List all projects for the admin panel (any publish state)" })
+	@ApiResponse({
+		status: 200,
+		description: "Envelope of projects matching the filters",
+		type: ListProjectsResponseDto,
+	})
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	findAllAdmin(@Query() query: ListProjectsQueryDto) {
+		return this.projects.findAllForAdmin(query);
+	}
+
+	@Get("by-id/:id")
+	@ApiBearerAuth()
+	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
+	@ApiOperation({ summary: "Get a project by id (any publish state)" })
+	@ApiResponse({
+		status: 200,
+		description: "The project body",
+		type: ProjectResponseDto,
+	})
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	@ApiResponse({ status: 404, description: "Project not found" })
+	findOneById(@Param("id", ParseUUIDPipe) id: string) {
+		return this.projects.findOneById(id);
 	}
 
 	@Get(":slug")

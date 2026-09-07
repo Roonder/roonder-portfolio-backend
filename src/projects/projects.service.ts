@@ -112,6 +112,64 @@ export class ProjectsService {
 	}
 
 	/**
+	 * `GET /api/v1/projects/admin` — authenticated list for the admin
+	 * panel. Same shape as `findPublic` but with no forced
+	 * `isPublished` gate: when the caller omits the filter, both
+	 * published and unpublished (draft) projects are returned so the
+	 * admin list can show everything.
+	 */
+	async findAllForAdmin(
+		query: ListProjectsQueryDto,
+	): Promise<ListProjectsResult> {
+		const page = query.page ?? 1;
+		const pageSize = Math.min(query.pageSize ?? 20, 100);
+		const tags = query.tags ?? [];
+
+		const qb = this.projects
+			.createQueryBuilder("project")
+			.leftJoinAndSelect("project.urls", "url")
+			.orderBy("project.created_at", "DESC")
+			.skip((page - 1) * pageSize)
+			.take(pageSize);
+
+		if (query.isPublished !== undefined) {
+			qb.andWhere("project.is_published = :isPub", {
+				isPub: query.isPublished,
+			});
+		}
+		if (tags.length > 0) {
+			qb.andWhere("project.tags @> ARRAY[:...tags]", { tags });
+		}
+
+		const [rows, total] = await qb.getManyAndCount();
+		return {
+			data: await Promise.all(
+				rows.map((row) => toProjectResponse(row, this.resolveCoverImage)),
+			),
+			total,
+			page,
+			pageSize,
+		};
+	}
+
+	/**
+	 * `GET /api/v1/projects/by-id/:id` — authenticated read by uuid,
+	 * regardless of publish state. Backs the admin edit page loader,
+	 * which only has the project's `id` (not its `slug`) from the
+	 * route param.
+	 */
+	async findOneById(id: string): Promise<ProjectResponseDto> {
+		const row = await this.projects.findOne({
+			where: { id },
+			relations: { urls: true },
+		});
+		if (!row) {
+			throw new NotFoundException("Project not found");
+		}
+		return toProjectResponse(row, this.resolveCoverImage);
+	}
+
+	/**
 	 * `GET /api/v1/projects/:slug` — public read by slug.
 	 *
 	 * The `isPublished: true` gate is encoded in the `where` clause
