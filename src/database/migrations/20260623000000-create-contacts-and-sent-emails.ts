@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import type { MigrationInterface, QueryRunner } from "typeorm";
 
 // Hand-written migration (no live Postgres available in this environment
 // to run `typeorm migration:generate`). The SQL below mirrors what
@@ -34,6 +34,24 @@ export class CreateContactsAndSentEmails20260623000000 implements MigrationInter
 	name = "CreateContactsAndSentEmails20260623000000";
 
 	public async up(queryRunner: QueryRunner): Promise<void> {
+		// --- 0. Create `contacts` if this is a fresh database (no prior
+		// drift-created table to ALTER). Includes `email_sent_log` so the
+		// DROP COLUMN below stays a correct no-op either way; the shape
+		// otherwise matches `ContactEntity` post-migration.
+		await queryRunner.query(`
+			CREATE TABLE IF NOT EXISTS "contacts" (
+				"id" uuid NOT NULL DEFAULT uuid_generate_v4(),
+				"name" varchar NOT NULL,
+				"email" varchar NOT NULL,
+				"subject" varchar,
+				"message" text NOT NULL,
+				"status" varchar NOT NULL DEFAULT 'pending',
+				"email_sent_log" boolean NOT NULL DEFAULT true,
+				"created_at" TIMESTAMP NOT NULL DEFAULT now(),
+				CONSTRAINT "PK_contacts" PRIMARY KEY ("id")
+			)
+		`);
+
 		// --- 1. Modify the `contacts` table: drop the boolean audit, add updated_at.
 		await queryRunner.query(
 			`ALTER TABLE "contacts" DROP COLUMN IF EXISTS "email_sent_log"`,

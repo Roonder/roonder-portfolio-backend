@@ -1,4 +1,4 @@
-import { MigrationInterface, QueryRunner } from "typeorm";
+import type { MigrationInterface, QueryRunner } from "typeorm";
 
 // Hand-written migration (no live Postgres available in this environment
 // to run `typeorm migration:generate`). The SQL below mirrors what
