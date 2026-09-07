@@ -9,6 +9,7 @@ import {
 	Query,
 	UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import {
 	ApiBearerAuth,
 	ApiOperation,
@@ -36,11 +37,12 @@ import {
  *   DELETE /api/v1/admin/reviews/:id            — protected
  *
  * All 3 routes are class-level `@UseGuards(JwtAuthGuard)`
- * (per ADR-6) and carry `@ApiBearerAuth()` for Swagger. No
- * throttler decorator on any method — the admin routes are
- * intentionally unthrottled (per ADR-4; the spec scenario
- * "Admin routes are NOT throttled" is covered by the static
- * assertion in the controller's spec).
+ * (per ADR-6) and carry `@ApiBearerAuth()` for Swagger. Each
+ * method also carries `@SkipThrottle()` — `ThrottlerGuard` is
+ * registered globally (`APP_GUARD`), and its restrictive default
+ * tracker is tuned for public write-abuse protection, not
+ * authenticated admin usage; these routes opt out of it
+ * explicitly (mirrors `ProjectsController`).
  *
  * `:id` is the review's internal uuid — `ParseUUIDPipe`
  * validates the format and returns 400 for anything that is
@@ -59,6 +61,7 @@ export class ReviewsAdminController {
 	constructor(private readonly reviews: ReviewsService) {}
 
 	@Get()
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "List all reviews (admin, paginated, filterable)",
 	})
@@ -80,6 +83,7 @@ export class ReviewsAdminController {
 	}
 
 	@Patch(":id/approve")
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "Toggle review approval (admin, idempotent)",
 	})
@@ -96,6 +100,7 @@ export class ReviewsAdminController {
 	}
 
 	@Delete(":id")
+	@SkipThrottle()
 	@HttpCode(204)
 	@ApiOperation({
 		summary:
