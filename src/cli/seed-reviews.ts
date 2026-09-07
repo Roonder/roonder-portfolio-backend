@@ -1,3 +1,4 @@
+import "dotenv/config";
 import type { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";
 import { ReviewEntity } from "../reviews/entities/review.entity";
