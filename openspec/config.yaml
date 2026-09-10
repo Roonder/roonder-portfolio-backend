@@ -1,0 +1,54 @@
+schema: spec-driven
+
+context: |
+  Tech stack: TypeScript 5.7, Node.js, NestJS 11, TypeORM 1.x + PostgreSQL (Supabase), JWT auth (passport-jwt), class-validator, Joi env validation, Resend SDK for email, Swagger.
+  Architecture: Monolithic RESTful API. NestJS module-per-domain layout under src/{auth,projects,reviews,contact,config}. Each module uses controller + service + dto + entities folders. Screaming architecture (folder = domain, not technical layer).
+  Testing: Jest 30 + ts-jest (unit tests colocated as *.spec.ts inside src/, E2E tests in test/ as *.e2e-spec.ts via jest-e2e.json). supertest + @nestjs/testing for E2E. Coverage via `npm run test:cov` (jest --coverage).
+  Specs location: openspec/specs/ (standard OpenSpec layout). Existing files: server_specs.md, ui_specs.md, database-schema.dbml.
+  Style: Tabs, single quotes, trailing commas (Prettier). ESLint flat config with typescript-eslint type-checked + prettier plugin.
+
+specs_layout:
+  mode: openspec
+  source_dir: openspec/specs
+  files:
+    - openspec/specs/server_specs.md
+    - openspec/specs/ui_specs.md
+    - openspec/specs/database-schema.dbml
+  note: "Standard OpenSpec layout. Delta specs go to openspec/changes/{change-name}/specs/...; archive merges deltas back into openspec/specs/server_specs.md."
+
+rules:
+  proposal:
+    - Include rollback plan for risky changes
+    - Cross-reference the matching section in openspec/specs/server_specs.md instead of duplicating content
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Mirror the domain boundaries in openspec/specs/server_specs.md (Auth, Projects, Reviews, Contact)
+  design:
+    - Include sequence diagrams for complex flows
+    - Document architecture decisions with rationale
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Respect NestJS module boundaries when splitting tasks
+  apply:
+    tdd: true
+    test_command: "npm test"
+    test_e2e_command: "npm run test:e2e"
+    test_watch_command: "npm run test:watch"
+    coverage_command: "npm run test:cov"
+    build_command: "npm run build"
+    lint_command: "npm run lint"
+    format_command: "npm run format"
+    test_convention: "Colocate *.spec.ts next to source files (Jest rootDir=src, testRegex=.*\\.spec\\.ts$). E2E in test/ as *.e2e-spec.ts."
+  verify:
+    test_command: "npm test"
+    build_command: "npm run build"
+    lint_command: "npm run lint"
+    e2e_command: "npm run test:e2e"
+    coverage_command: "npm run test:cov"
+    coverage_threshold: 0
+  archive:
+    - Warn before merging destructive deltas
+    - Update openspec/specs/server_specs.md with merged deltas
+    - Update openspec/specs/database-schema.dbml when entity shapes change

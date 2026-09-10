@@ -1,0 +1,126 @@
+// Configuración de la base de datos para Portafolio Personal
+// Motor: PostgreSQL (Supabase)
+
+Table users {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  email varchar [unique, not null]
+  password varchar [not null] // Bcrypt 12 rounds
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table projects {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  title varchar [not null]
+  slug varchar [unique, not null]
+  description text [not null]
+  content text // Para descripciones extendidas (Markdown/HTML)
+  cover_image varchar // URL de recurso visual
+  tags text[] // Array de strings (ej: ['React', 'NestJS'])
+  is_published boolean [default: false]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    (lower(slug)) [name: 'idx_projects_slug_lower']
+    (tags) [name: 'idx_projects_tags_gin', type: 'gin']
+  }
+}
+
+Table project_urls {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  project_id uuid [ref: > projects.id, not null, note: 'ON DELETE CASCADE']
+  title varchar [not null]
+  url varchar [not null]
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+Table reviews {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  author_name varchar [default: 'Anónimo']
+  author_role varchar // Ej: 'CTO en Startup X'
+  content text [not null]
+  rating integer [not null, note: 'Escala 1-5']
+  is_approved boolean [default: false] // Las reseñas requieren aprobación del admin
+  created_at timestamp [default: `now()`]
+}
+
+Table review_comments {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  review_id uuid [ref: > reviews.id, not null, note: 'ON DELETE CASCADE']
+  author_name varchar [default: 'Anónimo']
+  content text [not null]
+  is_approved boolean [default: false] // Moderación pública: solo se exponen comentarios aprobados
+  created_at timestamp [default: `now()`]
+}
+
+Table contacts {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  name varchar [not null]
+  email varchar [not null]
+  subject varchar
+  message text [not null]
+  status varchar [default: 'pending', note: 'pending, read, replied']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+}
+
+// Audit-trail table for every Resend send attempt from the contact
+// domain. One row per email: the owner notification + the visitor
+// auto-reply each write their own row with a distinct `kind`. The
+// `email_sent_log boolean` column that previously lived on `contacts`
+// is GONE (it could not represent two distinct sends, a `resend_id`,
+// or an `error_message` per send). Operator audits failures via
+// `SELECT * FROM sent_emails WHERE status = 'failed'`. The table is
+// intentionally FK-free: a contact row can be hard-deleted without
+// cascading the audit trail. The two Postgres-native enums are
+// declared via `CREATE TYPE` (the migration's `up` step); the DBML
+// enumerates the values for documentation. The `status` enum leaves
+// room for future `delivered`, `bounced`, `complained` values once
+// a Resend webhook receiver lands (out of scope for `domain-contact`).
+Table sent_emails {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  subject varchar [not null]
+  from varchar [not null, note: 'Friendly-name form "Name <email@domain>" allowed']
+  to varchar [not null]
+  resend_id varchar [note: "Resend's data.id on success; NULL on failure"]
+  status sent_emails_status_enum [not null, note: 'accepted, failed (delivered/bounced/complained reserved for future webhook)']
+  kind sent_emails_kind_enum [not null, note: 'contact_notification, contact_auto_reply']
+  error_message text [note: 'Resend error message on failed; NULL on accepted']
+  created_at timestamp [default: `now()`]
+  updated_at timestamp [default: `now()`]
+
+  Indexes {
+    kind [name: 'idx_sent_emails_kind']
+    status [name: 'idx_sent_emails_status']
+    (created_at) [name: 'idx_sent_emails_created_at_desc', note: 'DESC for natural audit ordering']
+    (resend_id) [name: 'idx_sent_emails_resend_id_unique', unique, note: 'Partial unique index WHERE resend_id IS NOT NULL — idempotency + future webhook correlation']
+  }
+}
+
+Enum sent_emails_status_enum {
+  accepted
+  failed
+}
+
+Enum sent_emails_kind_enum {
+  contact_notification
+  contact_auto_reply
+}
+
+Table refresh_tokens {
+  id uuid [pk, default: `uuid_generate_v4()`]
+  user_id uuid [ref: > users.id, not null]
+  family_id uuid [not null, note: 'Stable id for the login session lineage; same value across rotations, reused on theft-detect']
+  hashed_token varchar [unique, not null, note: 'sha-256 hex of the plaintext refresh token; raw token never persisted']
+  expires_at timestamp [not null]
+  revoked_at timestamp [note: 'Null while active; set on rotation, logout, or family-level reuse detection']
+  replaced_by uuid [ref: > refresh_tokens.id, note: 'Next row in the rotation chain; null on the active row']
+  created_at timestamp [default: `now()`]
+
+  Indexes {
+    family_id [name: 'idx_refresh_tokens_family_id']
+    user_id [name: 'idx_refresh_tokens_user_id']
+  }
+}
