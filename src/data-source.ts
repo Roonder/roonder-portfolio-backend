@@ -33,7 +33,14 @@ export const AppDataSource = new DataSource({
 		ContactEntity,
 		SentEmailEntity,
 	],
-	migrations: [join(process.cwd(), "src/database/migrations/*.{ts,js}")],
+	migrations: [
+		join(
+			process.cwd(),
+			process.env.NODE_ENV === "production"
+				? "dist/database/migrations*.js"
+				: "src/database/migrations/*.{ts,js}",
+		),
+	],
 	synchronize: false,
 	// Supabase's single "postgres" database hosts both the dev and
 	// prod schemas side by side — `DB_SCHEMA` picks which one this
