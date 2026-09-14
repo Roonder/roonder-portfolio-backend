@@ -7,7 +7,6 @@ import {
 	IsNotEmpty,
 	IsOptional,
 	IsString,
-	IsUrl,
 	Matches,
 	MaxLength,
 	ValidateNested,
@@ -57,9 +56,15 @@ export class CreateProjectDto {
 	@MaxLength(50_000)
 	content?: string;
 
-	@ApiProperty({ required: false, format: "uri" })
+	// `coverImage` stores the S3 **object key** returned by
+	// `POST /api/v1/uploads/cover-image` (e.g. `covers/<uuid>.jpg`), NOT
+	// a URL — presigned URLs are generated fresh on every read (see
+	// `ProjectsService` / `UploadsService`). A plain string is enough;
+	// key format/existence is not re-validated here.
+	@ApiProperty({ required: false, maxLength: 500 })
 	@IsOptional()
-	@IsUrl({ require_protocol: true, protocols: ["http", "https"] })
+	@IsString()
+	@MaxLength(500)
 	coverImage?: string;
 
 	@ApiProperty({ type: [String], required: false, maxItems: 20 })

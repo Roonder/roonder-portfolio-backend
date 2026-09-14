@@ -1,3 +1,4 @@
+import "dotenv/config";
 import * as bcrypt from "bcrypt";
 import type { Repository } from "typeorm";
 import { AppDataSource } from "../data-source";

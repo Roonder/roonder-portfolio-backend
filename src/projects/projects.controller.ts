@@ -11,6 +11,7 @@ import {
 	Query,
 	UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import {
 	ApiBearerAuth,
 	ApiOperation,
@@ -28,13 +29,19 @@ import { ProjectResponseDto } from "./dto/project-response.dto";
 /**
  * Public + admin CRUD surface for projects.
  *
- * 5 routes (per design §Swagger Annotations and ADR-5):
+ * 7 routes (per design §Swagger Annotations and ADR-5):
  *
- *   GET    /api/v1/projects           — public, paginated list
+ *   GET    /api/v1/projects           — public, paginated list (published only)
+ *   GET    /api/v1/projects/admin     — protected (JwtAuthGuard), list any publish state
+ *   GET    /api/v1/projects/by-id/:id — protected (JwtAuthGuard), read by uuid
  *   GET    /api/v1/projects/:slug     — public, single project by slug
  *   POST   /api/v1/projects           — protected (JwtAuthGuard), create
  *   PATCH  /api/v1/projects/:id       — protected (JwtAuthGuard), update
  *   DELETE /api/v1/projects/:id       — protected (JwtAuthGuard), delete
+ *
+ * `admin` and `by-id/:id` are declared BEFORE `:slug` — route
+ * registration order matters here, otherwise the `:slug` wildcard
+ * would swallow both literal segments.
  *
  * `:id` is the project's internal uuid — `ParseUUIDPipe` validates
  * the format and returns 400 for anything that is not a uuid. The
@@ -54,6 +61,7 @@ export class ProjectsController {
 	constructor(private readonly projects: ProjectsService) {}
 
 	@Get()
+	@SkipThrottle()
 	@ApiOperation({ summary: "List public projects (paginated, filterable)" })
 	@ApiResponse({
 		status: 200,
@@ -65,7 +73,39 @@ export class ProjectsController {
 		return this.projects.findPublic(query);
 	}
 
+	@Get("admin")
+	@ApiBearerAuth()
+	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
+	@ApiOperation({ summary: "List all projects for the admin panel (any publish state)" })
+	@ApiResponse({
+		status: 200,
+		description: "Envelope of projects matching the filters",
+		type: ListProjectsResponseDto,
+	})
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	findAllAdmin(@Query() query: ListProjectsQueryDto) {
+		return this.projects.findAllForAdmin(query);
+	}
+
+	@Get("by-id/:id")
+	@ApiBearerAuth()
+	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
+	@ApiOperation({ summary: "Get a project by id (any publish state)" })
+	@ApiResponse({
+		status: 200,
+		description: "The project body",
+		type: ProjectResponseDto,
+	})
+	@ApiResponse({ status: 401, description: "Missing or invalid bearer" })
+	@ApiResponse({ status: 404, description: "Project not found" })
+	findOneById(@Param("id", ParseUUIDPipe) id: string) {
+		return this.projects.findOneById(id);
+	}
+
 	@Get(":slug")
+	@SkipThrottle()
 	@ApiOperation({ summary: "Get a published project by slug" })
 	@ApiResponse({
 		status: 200,
@@ -80,6 +120,7 @@ export class ProjectsController {
 	@Post()
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@ApiOperation({ summary: "Create a new project" })
 	@ApiResponse({
 		status: 201,
@@ -96,6 +137,7 @@ export class ProjectsController {
 	@Patch(":id")
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "Update a project (DIFF urls, partial body)",
 	})
@@ -118,6 +160,7 @@ export class ProjectsController {
 	@Delete(":id")
 	@ApiBearerAuth()
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@HttpCode(204)
 	@ApiOperation({ summary: "Delete a project (cascades to project_urls)" })
 	@ApiResponse({ status: 204, description: "Project deleted" })

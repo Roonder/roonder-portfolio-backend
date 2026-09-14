@@ -23,7 +23,7 @@ const VALID_BODY = {
 	slug: "portfolio-app",
 	description: "My portfolio",
 	content: "Markdown body",
-	coverImage: "https://example.com/cover.png",
+	coverImage: "covers/8f14e45f-ceea-467e-b2e0-1f5f5f5f5f5f.jpg",
 	tags: ["React", "NestJS"],
 	isPublished: true,
 	urls: [
@@ -64,10 +64,18 @@ describe("CreateProjectDto validation", () => {
 		expect(errors.some((e) => e.field === "description")).toBe(true);
 	});
 
-	it("rejects when coverImage is not a URL with http/https protocol", async () => {
+	it("accepts any plain string as coverImage (it is a stored S3 key, not a URL)", async () => {
 		const errors = await collectErrors({
 			...VALID_BODY,
-			coverImage: "ftp://x.io",
+			coverImage: "covers/some-other-key.png",
+		});
+		expect(errors.some((e) => e.field === "coverImage")).toBe(false);
+	});
+
+	it("rejects when coverImage exceeds the 500-char length cap", async () => {
+		const errors = await collectErrors({
+			...VALID_BODY,
+			coverImage: "c".repeat(501),
 		});
 		expect(errors.some((e) => e.field === "coverImage")).toBe(true);
 	});

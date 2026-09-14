@@ -8,6 +8,7 @@ import {
 	Query,
 	UseGuards,
 } from "@nestjs/common";
+import { SkipThrottle } from "@nestjs/throttler";
 import {
 	ApiBearerAuth,
 	ApiOperation,
@@ -35,11 +36,12 @@ import { UpdateContactStatusDto } from "./dto/update-contact-status.dto";
  *   PATCH  /api/v1/admin/contacts/:id      — protected
  *
  * Both routes are class-level `@UseGuards(JwtAuthGuard)`
- * (per ADR-6) and carry `@ApiBearerAuth()` for Swagger. No
- * throttler decorator on any method — the admin routes are
- * intentionally unthrottled (per ADR-4; the spec scenario
- * "Admin routes are NOT throttled" is covered by the static
- * assertion in the controller's spec).
+ * (per ADR-6) and carry `@ApiBearerAuth()` for Swagger. Each
+ * method also carries `@SkipThrottle()` — `ThrottlerGuard` is
+ * registered globally (`APP_GUARD`), and its restrictive default
+ * tracker is tuned for public write-abuse protection, not
+ * authenticated admin usage; these routes opt out of it
+ * explicitly (mirrors `ProjectsController`).
  *
  * `:id` is the contact's internal uuid — `ParseUUIDPipe`
  * validates the format and returns 400 for anything that is
@@ -57,6 +59,7 @@ export class ContactAdminController {
 	constructor(private readonly contacts: ContactService) {}
 
 	@Get()
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "List all contacts (admin, paginated)",
 	})
@@ -76,6 +79,7 @@ export class ContactAdminController {
 	}
 
 	@Patch(":id")
+	@SkipThrottle()
 	@ApiOperation({
 		summary: "Update a contact's status (admin)",
 	})

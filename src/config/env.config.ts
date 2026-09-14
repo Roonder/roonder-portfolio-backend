@@ -40,6 +40,28 @@ export interface EnvConfig {
 	CONTACT_THROTTLE_TTL_MS: number;
 	CONTACT_THROTTLE_WRITE_LIMIT: number;
 	CONTACT_THROTTLE_READ_LIMIT: number;
+	// admin-throttling: only `POST /auth/login` stays behind a
+	// dedicated brute-force limit. Every other admin route uses
+	// `@SkipThrottle()` (see `auth/throttle.decorator.ts`).
+	ADMIN_THROTTLE_TTL_MS: number;
+	ADMIN_THROTTLE_LOGIN_LIMIT: number;
+	// Supabase only exposes a single database ("postgres") per
+	// project — the dev/prod split happens at the Postgres schema
+	// level instead. Defaults to "public" so local/dev docker
+	// Postgres (which only ever had one schema) is unaffected.
+	DB_SCHEMA?: string;
+	// uploads-domain: Supabase's S3-compatible storage for project cover
+	// images (see `src/uploads`). Intentionally `.optional()` (not
+	// `.required()`) — several test files build fake env fixtures for
+	// `ConfigModule` without these vars, and the upload feature must stay
+	// usable-when-configured rather than boot-blocking when it is not
+	// (e.g. local dev without Supabase). `UploadsService` fails clearly,
+	// but only when a caller actually invokes an S3 operation.
+	SUPABASE_S3_ENDPOINT?: string;
+	SUPABASE_S3_REGION?: string;
+	SUPABASE_S3_ACCESS_KEY_ID?: string;
+	SUPABASE_S3_SECRET_ACCESS_KEY?: string;
+	SUPABASE_S3_BUCKET?: string;
 }
 
 export const ENV_CONFIG = Joi.object<EnvConfig>({
@@ -85,4 +107,15 @@ export const ENV_CONFIG = Joi.object<EnvConfig>({
 	CONTACT_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
 	CONTACT_THROTTLE_WRITE_LIMIT: Joi.number().integer().min(1).default(5),
 	CONTACT_THROTTLE_READ_LIMIT: Joi.number().integer().min(1).default(60),
+	// admin-throttling: same floors as reviews/contact.
+	ADMIN_THROTTLE_TTL_MS: Joi.number().integer().min(1_000).default(60_000),
+	ADMIN_THROTTLE_LOGIN_LIMIT: Joi.number().integer().min(1).default(10),
+	DB_SCHEMA: Joi.string().default("public"),
+	// uploads-domain: see the `EnvConfig` interface comment above —
+	// deliberately optional so existing test fixtures are unaffected.
+	SUPABASE_S3_ENDPOINT: Joi.string().optional(),
+	SUPABASE_S3_REGION: Joi.string().optional(),
+	SUPABASE_S3_ACCESS_KEY_ID: Joi.string().optional(),
+	SUPABASE_S3_SECRET_ACCESS_KEY: Joi.string().optional(),
+	SUPABASE_S3_BUCKET: Joi.string().optional(),
 });

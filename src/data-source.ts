@@ -33,6 +33,47 @@ export const AppDataSource = new DataSource({
 		ContactEntity,
 		SentEmailEntity,
 	],
-	migrations: [join(process.cwd(), "src/database/migrations/*.{ts,js}")],
+	migrations: [
+		join(
+			process.cwd(),
+			process.env.NODE_ENV === "production"
+				? "dist/database/migrations*.js"
+				: "src/database/migrations/*.{ts,js}",
+		),
+	],
 	synchronize: false,
+	// Supabase's single "postgres" database hosts both the dev and
+	// prod schemas side by side — `DB_SCHEMA` picks which one this
+	// process targets. Defaults to "public" for local docker Postgres.
+	schema: process.env.DB_SCHEMA || "public",
+	// Supabase's direct connection (port 5432) requires TLS; the
+	// local docker Postgres does not speak TLS at all, so this is
+	// derived from the connection target rather than a NODE_ENV
+	// switch. `rejectUnauthorized: false` matches Supabase's docs —
+	// it terminates TLS with a cert not in Node's default trust
+	// store.
+	ssl: process.env.DATABASE_URL?.includes("supabase.co")
+		? { rejectUnauthorized: false }
+		: false,
+	// Bound the `pg` pool: without these, a dropped/stale connection
+	// (e.g. behind a pooler that recycles idle sockets) leaves queries
+	// hanging forever instead of failing fast.
+	extra: {
+		max: 10,
+		connectionTimeoutMillis: 5000,
+		idleTimeoutMillis: 10000,
+		keepAlive: true,
+		// The `schema` option above only qualifies identifiers TypeORM
+		// itself generates (e.g. the migrations tracking table); the
+		// hand-written migrations in src/database/migrations run raw
+		// SQL with unqualified table names, so they land wherever the
+		// session's `search_path` resolves. Setting it explicitly here
+		// (via the Postgres `options` startup parameter) is what
+		// actually routes those CREATE TABLE statements into the
+		// right schema. `extensions` is appended because Supabase
+		// installs extensions (uuid-ossp, pgcrypto, ...) there rather
+		// than into the active schema — `uuid_generate_v4()` would
+		// otherwise be unresolvable.
+		options: `-c search_path=${process.env.DB_SCHEMA || "public"},extensions,public`,
+	},
 });

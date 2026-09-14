@@ -4,6 +4,7 @@ import { ProjectsService } from "./projects.service";
 import { ProjectsController } from "./projects.controller";
 import { ProjectEntity } from "./entities/project.entity";
 import { ProjectUrlEntity } from "./entities/project-url.entity";
+import { UploadsModule } from "../uploads/uploads.module";
 
 /**
  * Projects domain module. The two entities are registered with
@@ -28,7 +29,10 @@ import { ProjectUrlEntity } from "./entities/project-url.entity";
  * for the wiring history.
  */
 @Module({
-	imports: [TypeOrmModule.forFeature([ProjectEntity, ProjectUrlEntity])],
+	imports: [
+		TypeOrmModule.forFeature([ProjectEntity, ProjectUrlEntity]),
+		UploadsModule,
+	],
 	controllers: [ProjectsController],
 	providers: [ProjectsService],
 })

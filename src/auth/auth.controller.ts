@@ -9,10 +9,12 @@ import {
 	UseGuards,
 } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { SkipThrottle } from "@nestjs/throttler";
 import type { Request, Response } from "express";
 import { AuthService } from "./auth.service";
 import { JwtAuthGuard } from "./guards/jwt-auth.guard";
 import { LoginDto } from "./dto/login.dto";
+import { ThrottledLogin } from "./throttle.decorator";
 
 // `req.user` is populated by `passport` after `JwtStrategy.validate()`
 // returns. The base Express `Request` type does not declare it, so we
@@ -60,6 +62,7 @@ export class AuthController {
 
 	@Post("login")
 	@HttpCode(200)
+	@ThrottledLogin()
 	async login(
 		@Body() dto: LoginDto,
 		@Res({ passthrough: true }) res: Response,
@@ -76,6 +79,7 @@ export class AuthController {
 
 	@Post("refresh")
 	@HttpCode(200)
+	@SkipThrottle()
 	async refresh(
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
@@ -97,6 +101,7 @@ export class AuthController {
 
 	@Post("logout")
 	@HttpCode(200)
+	@SkipThrottle()
 	async logout(
 		@Req() req: Request,
 		@Res({ passthrough: true }) res: Response,
@@ -115,6 +120,7 @@ export class AuthController {
 	// public login/refresh/logout endpoints with 401 — those endpoints
 	// read credentials from the `rt` cookie, not from `Authorization`.
 	@UseGuards(JwtAuthGuard)
+	@SkipThrottle()
 	@Get("profile")
 	getProfile(@Req() req: AuthenticatedRequest): {
 		id: string;

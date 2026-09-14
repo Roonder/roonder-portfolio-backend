@@ -14,15 +14,25 @@ import type { ProjectUrlResponseDto } from "./dto/project-url-response.dto";
  * For the DIFF path (Task 2.6), the manager-side save is followed
  * by a manual `applyProjectUrlsDiff`; the response reflects the
  * post-DIFF state.
+ *
+ * `row.coverImage` holds a stored S3 object key, never a URL (see
+ * `UploadsService`). This function is async because it must turn that
+ * key into a freshly-signed GET URL on every response — `resolveCoverImage`
+ * is `ProjectsService`'s `UploadsService.getSignedCoverImageUrl` bound
+ * call. When `row.coverImage` is `null`, `resolveCoverImage` is never
+ * invoked and the response's `coverImage` stays `null`.
  */
-export function toProjectResponse(row: ProjectEntity): ProjectResponseDto {
+export async function toProjectResponse(
+	row: ProjectEntity,
+	resolveCoverImage: (key: string) => Promise<string>,
+): Promise<ProjectResponseDto> {
 	return {
 		id: row.id,
 		title: row.title,
 		slug: row.slug,
 		description: row.description,
 		content: row.content,
-		coverImage: row.coverImage,
+		coverImage: row.coverImage ? await resolveCoverImage(row.coverImage) : null,
 		tags: row.tags ?? [],
 		isPublished: row.isPublished,
 		urls: (row.urls ?? []).map(toProjectUrlResponse),

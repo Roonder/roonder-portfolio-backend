@@ -9,6 +9,8 @@ import { AuthModule } from "./auth/auth.module";
 import { ProjectsModule } from "./projects/projects.module";
 import { ReviewsModule } from "./reviews/reviews.module";
 import { ContactModule } from "./contact/contact.module";
+import { UploadsModule } from "./uploads/uploads.module";
+import { StatsModule } from "./stats/stats.module";
 import { ENV_CONFIG } from "./config/env.config";
 import { EnvConfig } from "./config/env.config";
 import { AppDataSource } from "./data-source";
@@ -86,6 +88,8 @@ import { AppDataSource } from "./data-source";
 		AuthModule,
 		ReviewsModule,
 		ContactModule,
+		UploadsModule,
+		StatsModule,
 	],
 	controllers: [],
 	providers: [
